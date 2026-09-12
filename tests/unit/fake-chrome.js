@@ -55,8 +55,24 @@ export function installFakeChrome() {
     },
     scripting: {
       registered: [],
-      async registerContentScripts(list) { c.scripting.registered.push(...list); },
-      async unregisterContentScripts() { if (!c.scripting.registered.length) throw new Error('Nonexistent script ID'); c.scripting.registered = []; },
+      async registerContentScripts(scripts) {
+        for (const s of scripts) {
+          if (c.scripting.registered.some((r) => r.id === s.id)) throw new Error(`Duplicate script ID '${s.id}'`);
+        }
+        c.scripting.registered.push(...scripts);
+      },
+      async unregisterContentScripts(filter) {
+        const ids = filter?.ids;
+        if (ids === undefined) { c.scripting.registered = []; return; }
+        for (const id of ids) {
+          if (!c.scripting.registered.some((r) => r.id === id)) throw new Error(`Nonexistent script ID '${id}'`);
+        }
+        c.scripting.registered = c.scripting.registered.filter((r) => !ids.includes(r.id));
+      },
+      async getRegisteredContentScripts(filter) {
+        const ids = filter?.ids;
+        return ids === undefined ? [...c.scripting.registered] : c.scripting.registered.filter((r) => ids.includes(r.id));
+      },
     },
   };
   globalThis.chrome = c;

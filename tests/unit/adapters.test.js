@@ -42,12 +42,36 @@ test('downloads: writeFile options, suppressUi, erase own completed items only',
   assert.deepEqual(chrome.downloads.erased, [id]);
 });
 
+test('suppressUi resolves when downloads.setUiOptions is undefined', async () => {
+  const original = chrome.downloads.setUiOptions;
+  chrome.downloads.setUiOptions = undefined;
+  try {
+    await assert.doesNotReject(() => dl.suppressUi());
+  } finally {
+    chrome.downloads.setUiOptions = original;
+  }
+});
+
+test('suppressUi resolves when downloads.setUiOptions rejects (Edge behaviour)', async () => {
+  const original = chrome.downloads.setUiOptions;
+  chrome.downloads.setUiOptions = async () => { throw new Error('downloads.ui not supported'); };
+  try {
+    await assert.doesNotReject(() => dl.suppressUi());
+  } finally {
+    chrome.downloads.setUiOptions = original;
+  }
+});
+
 test('registerExamScript registers deduplicated match patterns', async () => {
   const cfg = { startPrefix: 'https://e.x/start?x=1', examPrefix: 'https://e.x/' };
   await registerExamScript(cfg);
   await registerExamScript({ startPrefix: 'https://e.x/', examPrefix: 'https://e.x/' });
   assert.equal(chrome.scripting.registered.length, 1);
   assert.deepEqual(chrome.scripting.registered[0], { id: 'exam', js: ['src/content.js'], matches: ['https://e.x/*'], runAt: 'document_start', allFrames: false, persistAcrossSessions: true });
+});
+
+test('unregistering an unknown script id rejects', async () => {
+  await assert.rejects(() => chrome.scripting.unregisterContentScripts({ ids: ['nope'] }), /Nonexistent script ID/);
 });
 
 test('tabs and windows return null instead of throwing', async () => {
