@@ -20,7 +20,7 @@ async function loadConfig() {
   return validate(cfg).length ? null : resolved(cfg);
 }
 
-export async function applyConfig() {
+async function applyConfigNow() {
   const { config } = await store.get('config');
   const cfg = normalize(config);
   const errors = validate(cfg);
@@ -29,6 +29,8 @@ export async function applyConfig() {
   await registerExamScript(resolved(cfg));
   await alarms.setPeriodic('periodic', cfg.shotIntervalMin);
 }
+
+export const applyConfig = () => enqueue(applyConfigNow);
 
 export function dispatch(input) {
   return enqueue(async () => {

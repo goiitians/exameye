@@ -58,3 +58,15 @@ test('probe dispatches FOCUS and WINDOW_STATE for the exam window', async () => 
   const { events } = await get('events');
   assert.deepEqual(events.slice(-2).map(e => e.name), ['FOCUS_LEFT_CHROME', 'WINDOW_MINIMIZED']);
 });
+
+test('concurrent applyConfig and dispatch leave both meta fields intact', async () => {
+  const before = await get('meta');
+  const at = before.meta.lastSeenAt + 1000;
+  await Promise.all([
+    sw.applyConfig(),
+    sw.dispatch({ kind: 'NAV', tabId: 2, windowId: 3, url: 'https://e.x/q/2', at }),
+  ]);
+  const { meta } = await get('meta');
+  assert.deepEqual(meta.configErrors, []);
+  assert.equal(meta.lastSeenAt, at);
+});
