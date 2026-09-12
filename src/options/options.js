@@ -20,9 +20,10 @@ form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const cfg = normalize(Object.fromEntries(fields.map(k => [k, form.elements[k].value])));
   const errors = validate(cfg);
-  if (errors.length) { status.textContent = errors.map(er => `${er.field}: ${er.message}`).join('\n'); return; }
+  if (errors.length) { status.textContent = errors.map(er => `${er.field}: ${er.message}`).join('\n'); status.className = 'err'; return; }
   await chrome.storage.local.set({ config: cfg });
   status.textContent = 'Saved.';
+  status.className = 'ok';
   showDest(cfg);
 });
 
