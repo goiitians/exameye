@@ -31,7 +31,7 @@ export function installFakeChrome() {
     alarms: { alarms: {}, async create(name, info) { c.alarms.alarms[name] = info; }, async clear(name) { delete c.alarms.alarms[name]; return true; }, onAlarm: evt() },
     tabs: {
       list: [],
-      async query() { return c.tabs.list; },
+      async query(q = {}) { return c.tabs.list.filter(t => (q.active === undefined || Boolean(t.active) === q.active) && (q.windowId === undefined || t.windowId === q.windowId)); },
       async get(id) { const t = c.tabs.list.find(t => t.id === id); if (!t) throw new Error('No tab with id: ' + id); return t; },
       captureVisibleTab: async () => 'data:image/jpeg;base64,/9j/FAKE',
       onActivated: evt(), onRemoved: evt(), onUpdated: evt(),
@@ -46,11 +46,17 @@ export function installFakeChrome() {
     webNavigation: { onCommitted: evt() },
     idle: { async setDetectionInterval() {}, onStateChanged: evt() },
     downloads: {
-      calls: [], items: [], erased: [], nextId: 1, failWhen: null, uiOptions: null,
+      calls: [], items: [], erased: [], nextId: 1, failWhen: null, interruptWhen: null, uiOptions: null,
       async download(opts) {
         if (c.downloads.failWhen?.(opts)) throw new Error('Download rejected by fake');
         c.downloads.calls.push(opts);
-        return c.downloads.nextId++;
+        const id = c.downloads.nextId++;
+        const error = c.downloads.interruptWhen?.(opts);
+        setTimeout(() => {
+          if (error) c.downloads.onChanged.emit({ id, state: { current: 'interrupted', error: { current: error } } });
+          else c.downloads.onChanged.emit({ id, state: { current: 'complete' } });
+        }, 0);
+        return id;
       },
       async search(q) { return c.downloads.items.filter(i => q.id === undefined || i.id === q.id); },
       async erase(q) { c.downloads.erased.push(q.id); return [q.id]; },

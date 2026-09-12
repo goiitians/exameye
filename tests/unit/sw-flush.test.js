@@ -46,6 +46,19 @@ test('a failed write stays pending and is replayed on the next flush', async () 
   assert.match(decode(chrome.downloads.calls.at(-1).url), /EXAM_NAV/);
 });
 
+test('an interrupted download stays pending with the interrupted error; a later complete removes it', async () => {
+  chrome.downloads.interruptWhen = (o) => o.filename.endsWith('log.txt') ? 'FILE_NO_SPACE' : null;
+  await sw.dispatch({ kind: 'NAV', tabId: 1, windowId: 3, url: 'https://e.x/q/1b', at: 2500 });
+  let { pending, meta } = await get(null);
+  assert.deepEqual(Object.keys(pending).map(p => p.split('/').pop()), ['log.txt']);
+  assert.match(meta.lastFlushError, /FILE_NO_SPACE/);
+  chrome.downloads.interruptWhen = null;
+  await sw.flush();
+  ({ pending, meta } = await get(null));
+  assert.deepEqual(pending, {});
+  assert.equal(meta.lastFlushError, null);
+});
+
 test('a dispatch landing mid-flush is not clobbered by the flush already in flight', async () => {
   const marker = 'ExamEye/_marker/marker.txt';
   await chrome.storage.local.set({ pending: { [marker]: { mime: 'text/plain', b64: Buffer.from('A').toString('base64') } } });
