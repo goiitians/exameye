@@ -7,12 +7,15 @@ import { captureJpeg } from './adapters/capture.js';
 import { normalize, validate, resolved } from './core/config.js';
 import { initial, reduce } from './core/session.js';
 import { headerLine, formatLine, chainLine } from './core/logline.js';
-import { GENESIS, shortHash } from './core/hashchain.js';
+import { GENESIS, shortHash, verify } from './core/hashchain.js';
 import { needsShot } from './core/events.js';
 import { shotFile } from './core/ids.js';
 import { classify } from './core/urlmatch.js';
 import { suppressUi, writeFile, eraseOwnCompleted } from './adapters/downloads.js';
-import { putText, putBase64, remove, dataUrl } from './core/sink.js';
+import { putText, putBase64, remove, dataUrl, toBase64 } from './core/sink.js';
+import { tally } from './core/counters.js';
+import { renderSummaryText } from './core/summary-text.js';
+import { renderSummaryHtml } from './core/summary-html.js';
 
 const GAP_MS = 90000;
 const SHOT_GAP_MS = 2000;
@@ -87,6 +90,7 @@ async function runEffects(effects, cfg) {
     if (e.type === 'ABANDON_ALARM_SET') await alarms.setAt('abandon', e.when);
     else if (e.type === 'ABANDON_ALARM_CLEAR') await alarms.clear('abandon');
     else if (e.type === 'PROBE') setTimeout(probe, 0);
+    else if (e.type === 'END') await endSession(e, cfg);
   }
 }
 
@@ -136,6 +140,24 @@ export async function flush() {
     } while (flushAgain);
   } finally {
     flushing = false;
+  }
+}
+
+async function endSession(e, cfg) {
+  const { events = [], lines = [], shots = {}, pending: p0 = {} } = await store.get(['events', 'lines', 'shots', 'pending']);
+  const base = `${cfg.subfolder}/${e.session.id}`;
+  const ctx = { session: e.session, outcome: e.outcome, endedAt: now(), events, tally: tally(events), integrity: { ...(await verify(lines)), lines: lines.length } };
+  let pending = putText(p0, `${base}/log.txt`, 'text/plain', lines.join('\n') + '\n');
+  pending = putText(pending, `${base}/events.jsonl`, 'application/json', events.map(ev => JSON.stringify(ev)).join('\n') + '\n');
+  pending = putText(pending, `${base}/summary.txt`, 'text/plain', renderSummaryText(ctx));
+  await store.set({ pending, session: initial(), events: [], lines: [], shots: {} });
+  await flush();
+  try {
+    await writeFile(`${base}/summary.html`, dataUrl('text/html', toBase64(renderSummaryHtml({ ...ctx, shots, inlineShots: true }))));
+  } catch {
+    const { pending: p1 = {} } = await store.get('pending');
+    await store.set({ pending: putText(p1, `${base}/summary.html`, 'text/html', renderSummaryHtml({ ...ctx, shots, inlineShots: false })) });
+    await flush();
   }
 }
 
