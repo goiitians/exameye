@@ -1,13 +1,19 @@
 import * as store from './adapters/storage.js';
 import * as alarms from './adapters/alarms.js';
 import { registerExamScript } from './adapters/scripting.js';
-import { getWindow, focusedWindowId } from './adapters/windows.js';
+import { getWindow, getAllWindows, focusedWindowId, lastFocusedWindowId } from './adapters/windows.js';
+import { getTab, queryAllTabs } from './adapters/tabs.js';
+import { captureJpeg } from './adapters/capture.js';
 import { normalize, validate, resolved } from './core/config.js';
 import { initial, reduce } from './core/session.js';
 import { headerLine, formatLine, chainLine } from './core/logline.js';
 import { GENESIS, shortHash } from './core/hashchain.js';
+import { needsShot } from './core/events.js';
+import { shotFile } from './core/ids.js';
+import { classify } from './core/urlmatch.js';
 
 const GAP_MS = 90000;
+const SHOT_GAP_MS = 2000;
 const now = () => Date.now();
 
 let queue = Promise.resolve();
@@ -53,6 +59,7 @@ export function dispatch(input) {
       events = []; lines = [h]; lastHash = await shortHash(h);
       await store.set({ shots: {} });
     }
+    const added = await takeShots(newEvents);
     for (const ev of newEvents) {
       const line = chainLine(formatLine(ev), lastHash);
       ev.hash = lastHash = await shortHash(line);
@@ -71,6 +78,44 @@ async function runEffects(effects, cfg) {
     else if (e.type === 'ABANDON_ALARM_CLEAR') await alarms.clear('abandon');
     else if (e.type === 'PROBE') setTimeout(probe, 0);
   }
+}
+
+async function takeShots(events) {
+  const { meta = {}, shots = {} } = await store.get(['meta', 'shots']);
+  let last = meta.lastShot || { at: 0, file: null };
+  const added = [];
+  for (const ev of events) {
+    if (!needsShot(ev)) continue;
+    if (last.file && ev.t - last.at < SHOT_GAP_MS) { ev.shot = last.file; continue; }
+    try {
+      const windowId = ev.windowId >= 0 ? ev.windowId : await lastFocusedWindowId();
+      const b64 = await captureJpeg(windowId);
+      const file = shotFile(ev.t, ev.name);
+      shots[file] = b64;
+      added.push({ file, b64 });
+      ev.shot = file;
+      last = { at: ev.t, file };
+    } catch (e) {
+      ev.data.shotError = String(e?.message || e);
+    }
+  }
+  if (added.length) { await store.set({ shots }); await store.patchMeta({ lastShot: last }); }
+  return added;
+}
+
+export async function tick() {
+  const { session } = await store.get('session');
+  const windows = (await getAllWindows()).map(w => ({ id: w.id, state: w.state }));
+  const examTabPresent = session?.state === 'ARMED' && (await getTab(session.examTabId)) !== null;
+  await dispatch({ kind: 'TICK', at: now(), windows, examTabPresent });
+}
+
+export async function recover() {
+  const cfg = await loadConfig();
+  const { session } = await store.get('session');
+  if (!cfg || session?.state !== 'ARMED') return;
+  const examTabs = (await queryAllTabs()).filter(t => classify(t.url, cfg)).map(t => ({ tabId: t.id, windowId: t.windowId, url: t.url }));
+  await dispatch({ kind: 'STARTUP', at: now(), examTabs });
 }
 
 async function probeWindow() {
@@ -92,5 +137,32 @@ async function boot() {
 }
 
 chrome.runtime.onInstalled.addListener(boot);
-chrome.runtime.onStartup.addListener(boot);
+chrome.runtime.onStartup.addListener(async () => { await boot(); await recover(); });
 chrome.storage.onChanged.addListener((changes) => { if (changes.config) applyConfig(); });
+chrome.webNavigation.onCommitted.addListener(async (d) => {
+  if (d.frameId !== 0) return;
+  const tab = await getTab(d.tabId);
+  dispatch({ kind: 'NAV', tabId: d.tabId, windowId: tab?.windowId ?? -1, url: d.url, incognito: Boolean(tab?.incognito), at: now() });
+});
+chrome.tabs.onActivated.addListener(async ({ tabId, windowId }) => {
+  const tab = await getTab(tabId);
+  dispatch({ kind: 'TAB_ACTIVATED', tabId, windowId, url: tab?.url || '', title: tab?.title || '', incognito: Boolean(tab?.incognito), at: now() });
+});
+chrome.tabs.onRemoved.addListener((tabId) => dispatch({ kind: 'TAB_REMOVED', tabId, at: now() }));
+chrome.windows.onFocusChanged.addListener((windowId) => { dispatch({ kind: 'FOCUS', windowId, at: now() }); setTimeout(probeWindow, 0); });
+chrome.windows.onCreated.addListener((w) => dispatch({ kind: 'WINDOW_CREATED', windowId: w.id, incognito: Boolean(w.incognito), at: now() }));
+chrome.windows.onRemoved.addListener((windowId) => dispatch({ kind: 'WINDOW_REMOVED', windowId, at: now() }));
+chrome.idle.onStateChanged.addListener((state) => dispatch({ kind: 'IDLE', state, at: now() }));
+chrome.downloads.onCreated.addListener((item) => {
+  if (item.byExtensionId === chrome.runtime.id) return;
+  dispatch({ kind: 'DOWNLOAD', url: item.url, filename: item.filename, mime: item.mime, at: now() });
+});
+chrome.runtime.onMessage.addListener((msg, sender) => {
+  if (msg?.type !== 'cs' || !sender.tab) return;
+  dispatch({ kind: 'CS', name: msg.name, data: msg.data, tabId: sender.tab.id, windowId: sender.tab.windowId, at: now() });
+});
+chrome.alarms.onAlarm.addListener(async (a) => {
+  if (a.name === 'tick') await tick();
+  else if (a.name === 'periodic') dispatch({ kind: 'PERIODIC', at: now() });
+  else if (a.name === 'abandon') dispatch({ kind: 'ABANDON_TIMER', at: now() });
+});
