@@ -237,6 +237,36 @@ Field `data` per event; every event also has `seq`, `ts` (ISO 8601 UTC), `t` (ep
 | EXTENSION_GAP | SW boot / runtime.onStartup | lastSeenAt, gapMs, reason (`sw-restart`/`browser-restart`) | no |
 | PERIODIC | alarm `periodic` | — | yes |
 
+### 5a. Screensaver / lock attribution (added 2026-09-12)
+
+A screensaver or lock screen makes the exam page lose focus exactly like Alt-Tab does, and the
+exam site itself reacts to that blur. The extension must tell the two apart. Signal:
+`chrome.idle.onStateChanged` fires `"locked"` when "the screen is locked or the screensaver
+activates" (Chrome docs), and `"idle"` when no input has been generated system-wide for the
+detection interval. Both are already recorded as `IDLE_START{state}` / `IDLE_END{idleMs}`;
+attribution happens in `tally` (pure, at summary time), so the reducer and the append-only log
+stay unchanged.
+
+Rule, applied per `FOCUS_LEFT_CHROME` interval `[t0, t1]` (`t1` = matching `FOCUS_RETURNED`, or
+session end if none):
+- `screensaver` if an `IDLE_START{state:'locked'}` occurs at any `t` with `t0 - 3000 <= t <= t1`
+  (the idle poller can report up to ~1 s after focus is lost; 3 s is the tolerance).
+- else `idle` if an `IDLE_START{state:'idle'}` occurs in the same window (no input anywhere on
+  the machine: the candidate was not using another application; covers platforms where the
+  screensaver is not reported as `locked`).
+- else `user`.
+
+`tally` output: `counts.SCREENSAVER` = number of `IDLE_START{state:'locked'}`;
+`attribution = { screensaver, idle, user }` = number of `FOCUS_LEFT_CHROME` in each class;
+`durations.focusLeftMs` = user-attributed intervals only; `durations.screensaverMs` = sum of
+locked intervals; `durations.idleMs` = sum of idle-state intervals (locked intervals are not
+double-counted there).
+
+Verified 2026-09-12: the API contract is documented; a live macOS test with a manually launched
+`ScreenSaverEngine` did not produce `locked` because a manual launch does not post the system
+notification Chromium observes, so the real trigger (idle timeout / hot corner) must be checked
+during centre dry-run (docs/centre-setup.md step 6). The `idle` fallback exists for that case.
+
 Content-script names on the wire (`CS` input): `COPY`, `CUT`, `PASTE`, `CONTEXTMENU`, `PRINT`,
 `FULLSCREEN_EXIT`, `DEVTOOLS`, `VISIBILITY{hidden}`, `BLUR`, `FOCUS`.
 
@@ -338,8 +368,9 @@ Counts
 
 Time away
   Tab away ......... 00:03:12
-  Focus left ....... 00:01:05
+  Focus left ....... 00:01:05   (user; screensaver: 1, idle: 0 not counted)
   Minimized ........ 00:00:00
+  Screensaver/lock . 00:04:10
   Idle ............. 00:00:00
 
 Parallel pages (focused time, visits)
