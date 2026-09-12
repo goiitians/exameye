@@ -27,6 +27,38 @@ test('result navigation writes all files, then clears the session', async () => 
   assert.deepEqual([events, lines, shots, pending], [[], [], {}, {}]);
 });
 
+test('recover() finishes an interrupted session end left as meta.pendingEnd', async () => {
+  await sw.dispatch({ kind: 'NAV', tabId: 9, windowId: 3, url: 'https://e.x/start', at: 200000 });
+  const { session: armed, events, lines, shots } = await get(['session', 'events', 'lines', 'shots']);
+  // simulate a SW death right after the session flipped to IDLE but before endSession wrote
+  // any of the final files: session/meta look exactly as dispatch() would have left them.
+  await chrome.storage.local.set({ session: { state: 'IDLE' } });
+  const { meta } = await get('meta');
+  await chrome.storage.local.set({ meta: { ...meta, pendingEnd: { outcome: 'RESULT', session: armed } } });
+  await chrome.storage.local.set({ events, lines, shots });
+  await sw.recover();
+  await sw.settled();
+  const base = `ExamEye/${armed.id}/`;
+  for (const f of ['log.txt', 'events.jsonl', 'summary.txt', 'summary.html']) assert.ok(byName(f).some(c => c.filename === base + f), f);
+  assert.match(decode(byName('summary.txt').at(-1).url), /Outcome: RESULT/);
+  const after = await get(['meta', 'session']);
+  assert.equal(after.meta.pendingEnd, null);
+  assert.deepEqual(after.session, { state: 'IDLE' });
+});
+
+test('ABANDON_TIMER produces summary files with outcome ABANDONED and clears pendingEnd', async () => {
+  await sw.dispatch({ kind: 'NAV', tabId: 10, windowId: 3, url: 'https://e.x/start', at: 300000 });
+  const { session: armed } = await get('session');
+  await sw.dispatch({ kind: 'TAB_REMOVED', tabId: 10, at: 300100 });
+  await sw.dispatch({ kind: 'ABANDON_TIMER', at: 300100 + 600000 });
+  const base = `ExamEye/${armed.id}/`;
+  for (const f of ['log.txt', 'events.jsonl', 'summary.txt', 'summary.html']) assert.ok(byName(f).some(c => c.filename === base + f), f);
+  assert.match(decode(byName('summary.txt').at(-1).url), /Outcome: ABANDONED/);
+  const { meta, session } = await get(['meta', 'session']);
+  assert.equal(meta.pendingEnd, null);
+  assert.deepEqual(session, { state: 'IDLE' });
+});
+
 test('if the inline summary.html is rejected, the linked variant is written instead', async () => {
   let n = 0;
   chrome.downloads.failWhen = (o) => o.filename.endsWith('summary.html') && n++ === 0;

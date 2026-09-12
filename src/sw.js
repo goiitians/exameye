@@ -78,6 +78,8 @@ export function dispatch(input) {
       for (const s of added) pending = putBase64(pending, `${base}/${s.file}`, 'image/jpeg', s.b64);
       await store.set({ pending });
     }
+    const endEffect = r.effects.find(e => e.type === 'END');
+    if (endEffect) await store.patchMeta({ pendingEnd: { outcome: endEffect.outcome, session: endEffect.session } });
     await store.set({ session: r.session, events, lines, lastHash });
     await store.patchMeta({ lastSeenAt: input.at });
     await runEffects(r.effects, cfg);
@@ -150,9 +152,18 @@ async function endSession(e, cfg) {
     await store.set({ pending: putText(p1, `${base}/summary.html`, 'text/html', renderSummaryHtml({ ...ctx, shots, inlineShots: false })) });
     await flushNow();
   }
+  await store.patchMeta({ pendingEnd: null });
+}
+
+async function finishPendingEnd() {
+  const { meta = {} } = await store.get('meta');
+  if (!meta.pendingEnd) return;
+  const cfg = await loadConfig();
+  if (cfg) await enqueue(() => endSession(meta.pendingEnd, cfg));
 }
 
 export async function tick() {
+  await finishPendingEnd();
   const { session } = await store.get('session');
   const windows = (await getAllWindows()).map(w => ({ id: w.id, state: w.state }));
   const examTabPresent = session?.state === 'ARMED' && (await getTab(session.examTabId)) !== null;
@@ -161,6 +172,7 @@ export async function tick() {
 }
 
 export async function recover() {
+  await finishPendingEnd();
   const cfg = await loadConfig();
   const { session } = await store.get('session');
   if (!cfg || session?.state !== 'ARMED') return;
