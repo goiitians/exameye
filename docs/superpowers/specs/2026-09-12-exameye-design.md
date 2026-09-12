@@ -233,7 +233,7 @@ Field `data` per event; every event also has `seq`, `ts` (ISO 8601 UTC), `t` (ep
 | DEVTOOLS_OPENED | CS resize heuristic (outer−inner ≥ 160 px) | dw, dh | yes |
 | IDLE_START | chrome.idle.onStateChanged | state (`idle`/`locked`) | no |
 | IDLE_END | chrome.idle.onStateChanged | idleMs | no |
-| DOWNLOAD_STARTED | downloads.onCreated (not `byExtensionId===runtime.id`) | url, filename, mime | yes |
+| DOWNLOAD_STARTED | downloads.onCreated (not `byExtensionId===runtime.id`, and not a `data:` URL — see §14) | url, filename, mime | yes |
 | EXTENSION_GAP | SW boot / runtime.onStartup | lastSeenAt, gapMs, reason (`sw-restart`/`browser-restart`) | no |
 | PERIODIC | alarm `periodic` | — | yes |
 
@@ -358,12 +358,12 @@ One JSON object per line, same order as log.txt (no header line):
 ExamEye summary
 Session:   20260912-091502_A17   Seat: A17
 Started:   2026-09-12 09:15:02 (+05:30)   Ended: 2026-09-12 12:10:44   Outcome: RESULT
-Duration:  2h55m42s
+Duration:  02:55:42
 Log chain: OK (312 lines)
 
 Counts
-  TAB_SWITCH .............. 4
-  FOCUS_LEFT_CHROME ....... 2
+  TAB_SWITCH ............. 4
+  FOCUS_LEFT_CHROME ...... 2
   ... (every event name with count > 0, alphabetical)
 
 Time away
@@ -509,3 +509,9 @@ recovery beyond re-injection on reload.
    `chrome.downloads.search()` from the SW and reads `item.filename`.
 9. **Tab discard** (Memory Saver / Edge sleeping tabs) — the content script unloads with the tab;
    SW-side events (focus, activation, navigation) continue; the page-level events resume on reload.
+
+- **`data:`-URL downloads are not logged.** The extension's own file writes are `data:` downloads, and
+  under DevTools/CDP download overrides `byExtensionId` is undefined for them, which produced an
+  unbounded write→DOWNLOAD_STARTED→write loop in the integration harness. `downloads.onCreated`
+  therefore ignores every `data:` URL. A student export via `<a download href="data:…">` or a
+  canvas save is consequently not recorded; `http(s):` and `blob:` downloads are.
