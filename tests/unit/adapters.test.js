@@ -42,6 +42,24 @@ test('downloads: writeFile options, suppressUi, erase own completed items only',
   assert.deepEqual(chrome.downloads.erased, [id]);
 });
 
+test('writeFile settles even if the terminal onChanged event arrives before download() resolves with the id', async () => {
+  const id = chrome.downloads.nextId;
+  const realDownload = chrome.downloads.download.bind(chrome.downloads);
+  chrome.downloads.download = async (opts) => {
+    // unlike the fake's normal (and real Chrome's typical) ordering, fire the terminal event
+    // BEFORE this call's own promise resolves with the id.
+    await chrome.downloads.onChanged.emit({ id, state: { current: 'complete' } });
+    chrome.downloads.calls.push(opts);
+    chrome.downloads.nextId++;
+    return id;
+  };
+  try {
+    await assert.doesNotReject(() => dl.writeFile('ExamEye/S/early.txt', 'data:text/plain;base64,YQ=='));
+  } finally {
+    chrome.downloads.download = realDownload;
+  }
+});
+
 test('suppressUi resolves when downloads.setUiOptions is undefined', async () => {
   const original = chrome.downloads.setUiOptions;
   chrome.downloads.setUiOptions = undefined;
