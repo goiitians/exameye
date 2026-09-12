@@ -86,16 +86,13 @@ test('arm on start page, record a tab switch, disarm on result, files written', 
   } finally {
     // closing the context while an extension download is still in progress makes Chromium show
     // a native "Download is in progress" quit dialog and keeps the window open.
-    try {
-      if (collector) {
-        await waitFor(() => collector.evaluate(() => {
-          const done = new Set(window.__dlc.filter(c => c.state === 'complete' || c.state === 'interrupted').map(c => c.id));
-          return window.__dl.every(i => i.state === 'complete' || done.has(i.id));
-        }));
-      }
-    } finally {
-      await b.close();
-      site.server.close();
+    if (collector) {
+      await waitFor(() => collector.evaluate(() => {
+        const done = new Set(window.__dlc.filter(c => c.state === 'complete' || c.state === 'interrupted').map(c => c.id));
+        return window.__dl.every(i => i.state === 'complete' || done.has(i.id));
+      })).catch(e => console.warn(`download drain: ${e.message}`));
     }
+    await b.close();
+    site.server.close();
   }
 });

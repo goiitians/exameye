@@ -1,11 +1,11 @@
 import { createServer } from 'node:http';
-import { readFile, mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { chromium } from 'playwright';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const SITE = path.join(import.meta.dirname, 'site');
+const PROFILES = path.join(ROOT, 'playwright-profile');
 
 export async function startSite() {
   const server = createServer(async (req, res) => {
@@ -22,8 +22,9 @@ export async function startSite() {
 }
 
 export async function launch(config) {
-  const profile = await mkdtemp(path.join(tmpdir(), 'exameye-profile-'));
-  const downloads = await mkdtemp(path.join(tmpdir(), 'exameye-dl-'));
+  await mkdir(PROFILES, { recursive: true });
+  const profile = await mkdtemp(path.join(PROFILES, 'profile-'));
+  const downloads = await mkdtemp(path.join(PROFILES, 'dl-'));
   const context = await chromium.launchPersistentContext(profile, {
     channel: 'chromium', headless: false,
     args: [`--disable-extensions-except=${ROOT}`, `--load-extension=${ROOT}`],
