@@ -2,7 +2,7 @@ import { classify } from './urlmatch.js';
 import { sessionId } from './ids.js';
 import { makeEvent } from './events.js';
 
-const freshAway = () => ({ tabAt: null, focusAt: null, minAt: null, idleAt: null });
+const freshAway = () => ({ tabAt: null, focusAt: null, minAt: null, idleAt: null, idleState: null });
 
 export function initial() {
   return { state: 'IDLE' };
@@ -129,9 +129,16 @@ Object.assign(HANDLERS, {
   },
   IDLE(s, input, cfg, emit) {
     if (input.state !== 'active') {
-      if (s.away.idleAt === null) { s.away.idleAt = input.at; emit('IDLE_START', { state: input.state }); }
+      if (s.away.idleAt === null) {
+        s.away.idleAt = input.at; s.away.idleState = input.state;
+        emit('IDLE_START', { state: input.state });
+      } else if (input.state !== s.away.idleState) {
+        emit('IDLE_END', { idleMs: input.at - s.away.idleAt });
+        s.away.idleAt = input.at; s.away.idleState = input.state;
+        emit('IDLE_START', { state: input.state });
+      }
     } else if (s.away.idleAt !== null) {
-      emit('IDLE_END', { idleMs: input.at - s.away.idleAt }); s.away.idleAt = null;
+      emit('IDLE_END', { idleMs: input.at - s.away.idleAt }); s.away.idleAt = null; s.away.idleState = null;
     }
   },
   DOWNLOAD(s, input, cfg, emit) { emit('DOWNLOAD_STARTED', { url: input.url, filename: input.filename, mime: input.mime }); },

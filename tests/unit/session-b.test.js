@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { initial, reduce } from '../../src/core/session.js';
+import { tally } from '../../src/core/counters.js';
 
 const cfg = { startPrefix: 'https://e.x/start', examPrefix: 'https://e.x/', resultPrefix: 'https://e.x/result', seat: 'A17', subfolder: 'ExamEye', shotIntervalMin: 10, abandonMin: 10 };
 const T0 = 1789530302117;
@@ -66,6 +67,33 @@ test('idle start/end and download', () => {
   assert.deepEqual(r.events.map(e => [e.name, e.data]), [['IDLE_END', { idleMs: 60000 }]]);
   r = reduce(armed(), { kind: 'DOWNLOAD', url: 'https://f.x/a.pdf', filename: 'a.pdf', mime: 'application/pdf', at: T0 }, cfg);
   assert.deepEqual(r.events.map(e => [e.name, e.data]), [['DOWNLOAD_STARTED', { url: 'https://f.x/a.pdf', filename: 'a.pdf', mime: 'application/pdf' }]]);
+});
+
+test('idle -> locked closes the idle interval and opens a new one; repeating the same state is silent', () => {
+  let r = reduce(armed(), { kind: 'IDLE', state: 'idle', at: T0 }, cfg);
+  assert.deepEqual(names(r), ['IDLE_START']);
+  r = reduce(r.session, { kind: 'IDLE', state: 'idle', at: T0 + 30000 }, cfg);
+  assert.deepEqual(names(r), []);
+  r = reduce(r.session, { kind: 'IDLE', state: 'locked', at: T0 + 60000 }, cfg);
+  assert.deepEqual(r.events.map(e => [e.name, e.data]), [['IDLE_END', { idleMs: 60000 }], ['IDLE_START', { state: 'locked' }]]);
+});
+
+test('active->idle->locked->active: tally attributes idleMs and screensaverMs to the right segments', () => {
+  let r = reduce(armed(), { kind: 'IDLE', state: 'idle', at: T0 }, cfg);
+  const events = [...r.events];
+  r = reduce(r.session, { kind: 'IDLE', state: 'locked', at: T0 + 60000 }, cfg);
+  events.push(...r.events);
+  r = reduce(r.session, { kind: 'IDLE', state: 'active', at: T0 + 120000 }, cfg);
+  events.push(...r.events);
+  assert.deepEqual(events.map(e => [e.name, e.data]), [
+    ['IDLE_START', { state: 'idle' }],
+    ['IDLE_END', { idleMs: 60000 }],
+    ['IDLE_START', { state: 'locked' }],
+    ['IDLE_END', { idleMs: 60000 }],
+  ]);
+  const t = tally(events);
+  assert.equal(t.durations.idleMs, 60000);
+  assert.equal(t.durations.screensaverMs, 60000);
 });
 
 test('TICK reconciles window state and missing exam tab', () => {

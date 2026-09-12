@@ -121,7 +121,7 @@ turns effects into API calls.
   ```
   { state:'ARMED', id, seat, startedAt, examTabId, examWindowId, examUrl, seq,
     lastActivityAt, tabLostAt: null|ms, windowState: 'normal'|'minimized'|'fullscreen'|..,
-    away: { tabAt:null|ms, focusAt:null|ms, minAt:null|ms, idleAt:null|ms } }
+    away: { tabAt:null|ms, focusAt:null|ms, minAt:null|ms, idleAt:null|ms, idleState:null|'idle'|'locked' } }
   ```
   `tabLostAt !== null` is the "exam tab gone" sub-condition (no separate state; it must survive
   restarts and keeps the reducer small).
@@ -162,8 +162,10 @@ turns effects into API calls.
 | ARMED | CS | name FULLSCREEN_EXIT | `FULLSCREEN_EXIT{source:'document'}` | ARMED |
 | ARMED | CS | name DEVTOOLS | `DEVTOOLS_OPENED{dw,dh}` | ARMED |
 | ARMED | CS | name VISIBILITY / BLUR / FOCUS | none | effect `PROBE` (SW queries focus + window state and dispatches FOCUS and WINDOW_STATE) |
-| ARMED | IDLE | state idle/locked, `away.idleAt===null` | `IDLE_START{state}` | away.idleAt=at |
-| ARMED | IDLE | state active, `away.idleAt!==null` | `IDLE_END{idleMs}` | away.idleAt=null |
+| ARMED | IDLE | state ≠ active, `away.idleAt===null` | `IDLE_START{state}` | away.idleAt=at, away.idleState=state |
+| ARMED | IDLE | state ≠ active, `away.idleAt!==null`, state ≠ `away.idleState` | `IDLE_END{idleMs}` then `IDLE_START{state}` | away.idleAt=at, away.idleState=state |
+| ARMED | IDLE | state ≠ active, state === `away.idleState` | none | ARMED |
+| ARMED | IDLE | state active, `away.idleAt!==null` | `IDLE_END{idleMs}` | away.idleAt=null, away.idleState=null |
 | ARMED | DOWNLOAD | — | `DOWNLOAD_STARTED{url,filename,mime}` | ARMED |
 | ARMED | TICK | — | as WINDOW_STATE for exam window; if `!examTabPresent && tabLostAt===null` as TAB_REMOVED | lastActivityAt=at |
 | ARMED | STARTUP | `examTabs` non-empty | none (GAP is a separate input) | examTabId/WindowId = examTabs[0], tabLostAt=null; away.* reset to null (open intervals cannot be closed correctly after a restart); effect `ABANDON_ALARM_CLEAR` |
@@ -243,9 +245,11 @@ A screensaver or lock screen makes the exam page lose focus exactly like Alt-Tab
 exam site itself reacts to that blur. The extension must tell the two apart. Signal:
 `chrome.idle.onStateChanged` fires `"locked"` when "the screen is locked or the screensaver
 activates" (Chrome docs), and `"idle"` when no input has been generated system-wide for the
-detection interval. Both are already recorded as `IDLE_START{state}` / `IDLE_END{idleMs}`;
-attribution happens in `tally` (pure, at summary time), so the reducer and the append-only log
-stay unchanged.
+detection interval. Both are recorded as `IDLE_START{state}` / `IDLE_END{idleMs}`; a real machine
+commonly reports `idle` first (detection interval) and only `locked` once the screensaver actually
+engages, so the reducer closes the `idle` interval and opens a fresh `locked` one on that
+transition (§4) instead of silently dropping the second state. Attribution itself happens in
+`tally` (pure, at summary time), so the append-only log format is unchanged.
 
 Rule, applied per `FOCUS_LEFT_CHROME` interval `[t0, t1]` (`t1` = matching `FOCUS_RETURNED`, or
 session end if none):
