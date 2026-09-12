@@ -206,7 +206,8 @@ chrome.windows.onCreated.addListener((w) => dispatch({ kind: 'WINDOW_CREATED', w
 chrome.windows.onRemoved.addListener((windowId) => dispatch({ kind: 'WINDOW_REMOVED', windowId, at: now() }));
 chrome.idle.onStateChanged.addListener((state) => dispatch({ kind: 'IDLE', state, at: now() }));
 chrome.downloads.onCreated.addListener((item) => {
-  if (item.byExtensionId === chrome.runtime.id) return;
+  // own writes; byExtensionId is not reliable under DevTools download overrides
+  if (item.byExtensionId === chrome.runtime.id || item.url?.startsWith('data:')) return;
   dispatch({ kind: 'DOWNLOAD', url: item.url, filename: item.filename, mime: item.mime, at: now() });
 });
 chrome.runtime.onMessage.addListener((msg, sender) => {

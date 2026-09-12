@@ -64,6 +64,16 @@ test('focus change, idle, downloads by others, windows', async () => {
   assert.equal(n.filter(x => x === 'DOWNLOAD_STARTED').length, 1);
 });
 
+test('downloads.onCreated: own data: URL writes are ignored even without byExtensionId, other origins still fire', async () => {
+  const before = (await names()).filter(x => x === 'DOWNLOAD_STARTED').length;
+  await chrome.downloads.onCreated.emit({ id: 7, url: 'data:text/plain;base64,aGVsbG8=', filename: '', mime: 'text/plain' });
+  await sw.settled();
+  assert.equal((await names()).filter(x => x === 'DOWNLOAD_STARTED').length, before, 'data: URL own-write must not fire DOWNLOAD_STARTED');
+  await chrome.downloads.onCreated.emit({ id: 8, url: 'https://other.x/report.pdf', filename: '/dl/report.pdf', mime: 'application/pdf' });
+  await sw.settled();
+  assert.equal((await names()).filter(x => x === 'DOWNLOAD_STARTED').length, before + 1, 'https: URL from another origin must still fire DOWNLOAD_STARTED');
+});
+
 test('tick alarm reconciles state and updates lastSeenAt', async () => {
   chrome.windows.list = [{ id: 3, focused: false, state: 'minimized' }];
   const before = (await get('meta')).meta.lastSeenAt;
