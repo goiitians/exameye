@@ -95,3 +95,19 @@ test('recover on startup re-adopts the exam tab by URL', async () => {
   assert.equal(session.examTabId, 44);
   assert.equal(session.examWindowId, 9);
 });
+
+test('window focus returning to the exam tab window closes the tab-away episode', async () => {
+  chrome.tabs.list = [
+    { id: 44, windowId: 9, url: 'https://e.x/q/7', title: 'Exam', incognito: false, active: true },
+    { id: 45, windowId: 20, url: 'https://g.x/', title: 'G', incognito: false, active: true },
+  ];
+  await chrome.windows.onCreated.emit({ id: 20, incognito: false });
+  await chrome.tabs.onActivated.emit({ tabId: 45, windowId: 20 });
+  await sw.settled();
+  assert.ok((await names()).includes('TAB_SWITCH'));
+  assert.notEqual((await get('session')).session.away.tabAt, null);
+  await chrome.windows.onFocusChanged.emit(9);
+  await sw.settled();
+  assert.ok((await names()).includes('TAB_RETURN'), 'expected TAB_RETURN from the synthetic TAB_ACTIVATED on focus return');
+  assert.equal((await get('session')).session.away.tabAt, null);
+});

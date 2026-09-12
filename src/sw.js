@@ -2,7 +2,7 @@ import * as store from './adapters/storage.js';
 import * as alarms from './adapters/alarms.js';
 import { registerExamScript } from './adapters/scripting.js';
 import { getWindow, getAllWindows, focusedWindowId, lastFocusedWindowId } from './adapters/windows.js';
-import { getTab, queryAllTabs } from './adapters/tabs.js';
+import { getTab, queryAllTabs, queryActiveTab } from './adapters/tabs.js';
 import { captureJpeg } from './adapters/capture.js';
 import { normalize, validate, resolved } from './core/config.js';
 import { initial, reduce } from './core/session.js';
@@ -192,6 +192,12 @@ export async function probe() {
   await probeWindow();
 }
 
+async function returnToWindow(windowId) {
+  const [tab] = await queryActiveTab(windowId);
+  if (!tab) return;
+  await dispatch({ kind: 'TAB_ACTIVATED', tabId: tab.id, windowId: tab.windowId, url: tab.url || '', title: tab.title || '', incognito: Boolean(tab.incognito), at: now() });
+}
+
 async function boot() {
   await suppressUi();
   await applyConfig();
@@ -213,7 +219,11 @@ chrome.tabs.onActivated.addListener(async ({ tabId, windowId }) => {
   dispatch({ kind: 'TAB_ACTIVATED', tabId, windowId, url: tab?.url || '', title: tab?.title || '', incognito: Boolean(tab?.incognito), at: now() });
 });
 chrome.tabs.onRemoved.addListener((tabId) => dispatch({ kind: 'TAB_REMOVED', tabId, at: now() }));
-chrome.windows.onFocusChanged.addListener((windowId) => { dispatch({ kind: 'FOCUS', windowId, at: now() }); setTimeout(probeWindow, 0); });
+chrome.windows.onFocusChanged.addListener(async (windowId) => {
+  dispatch({ kind: 'FOCUS', windowId, at: now() });
+  setTimeout(probeWindow, 0);
+  if (windowId >= 0) await returnToWindow(windowId);
+});
 chrome.windows.onCreated.addListener((w) => dispatch({ kind: 'WINDOW_CREATED', windowId: w.id, incognito: Boolean(w.incognito), at: now() }));
 chrome.windows.onRemoved.addListener((windowId) => dispatch({ kind: 'WINDOW_REMOVED', windowId, at: now() }));
 chrome.idle.onStateChanged.addListener((state) => dispatch({ kind: 'IDLE', state, at: now() }));
