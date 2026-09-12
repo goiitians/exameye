@@ -45,3 +45,29 @@ test('a failed write stays pending and is replayed on the next flush', async () 
   assert.equal(chrome.downloads.calls.length, n + 1);
   assert.match(decode(chrome.downloads.calls.at(-1).url), /EXAM_NAV/);
 });
+
+test('a dispatch landing mid-flush is not clobbered by the flush already in flight', async () => {
+  const marker = 'ExamEye/_marker/marker.txt';
+  await chrome.storage.local.set({ pending: { [marker]: { mime: 'text/plain', b64: Buffer.from('A').toString('base64') } } });
+  let releaseGate, started = false;
+  const gate = new Promise((r) => { releaseGate = r; });
+  const realDownload = chrome.downloads.download.bind(chrome.downloads);
+  chrome.downloads.download = async (opts) => {
+    if (opts.filename === marker) { started = true; await gate; }
+    return realDownload(opts);
+  };
+  const before = chrome.downloads.calls.length;
+  const flushP = sw.flush();
+  for (let i = 0; i < 50 && !started; i++) await new Promise((r) => setTimeout(r, 0));
+  assert.ok(started, 'the flush never reached the gated download');
+  const dispatchP = sw.dispatch({ kind: 'NAV', tabId: 1, windowId: 3, url: 'https://e.x/q/2', at: 3000 });
+  await new Promise((r) => setTimeout(r, 20));
+  releaseGate();
+  await Promise.all([flushP, dispatchP]);
+  await sw.settled();
+  chrome.downloads.download = realDownload;
+  const { pending } = await get('pending');
+  assert.deepEqual(pending, {});
+  const newLogCalls = chrome.downloads.calls.slice(before).filter(c => c.filename.endsWith('log.txt'));
+  assert.ok(newLogCalls.some(c => decode(c.url).includes('e.x/q/2')), 'the event added during the flush must have been downloaded, not silently dropped');
+});

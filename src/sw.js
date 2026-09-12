@@ -81,7 +81,7 @@ export function dispatch(input) {
     await store.set({ session: r.session, events, lines, lastHash });
     await store.patchMeta({ lastSeenAt: input.at });
     await runEffects(r.effects, cfg);
-    if (newEvents.length) await flush();
+    if (newEvents.length) await flushNow();
   });
 }
 
@@ -117,31 +117,22 @@ async function takeShots(events) {
   return added;
 }
 
-let flushing = false, flushAgain = false;
-
-export async function flush() {
-  if (flushing) { flushAgain = true; return; }
-  flushing = true;
-  try {
-    do {
-      flushAgain = false;
-      let { pending = {} } = await store.get('pending');
-      let error = null;
-      for (const [path, f] of Object.entries(pending)) {
-        try {
-          await writeFile(path, dataUrl(f.mime, f.b64));
-          pending = remove(pending, path);
-        } catch (e) {
-          error = `${path}: ${e?.message || e}`;
-        }
-      }
-      await store.set({ pending });
-      await store.patchMeta({ lastFlushAt: now(), lastFlushError: error });
-    } while (flushAgain);
-  } finally {
-    flushing = false;
+async function flushNow() {
+  let { pending = {} } = await store.get('pending');
+  let error = null;
+  for (const [path, f] of Object.entries(pending)) {
+    try {
+      await writeFile(path, dataUrl(f.mime, f.b64));
+      pending = remove(pending, path);
+    } catch (e) {
+      error = `${path}: ${e?.message || e}`;
+    }
   }
+  await store.set({ pending });
+  await store.patchMeta({ lastFlushAt: now(), lastFlushError: error });
 }
+
+export const flush = () => enqueue(flushNow);
 
 async function endSession(e, cfg) {
   const { events = [], lines = [], shots = {}, pending: p0 = {} } = await store.get(['events', 'lines', 'shots', 'pending']);
@@ -151,13 +142,13 @@ async function endSession(e, cfg) {
   pending = putText(pending, `${base}/events.jsonl`, 'application/json', events.map(ev => JSON.stringify(ev)).join('\n') + '\n');
   pending = putText(pending, `${base}/summary.txt`, 'text/plain', renderSummaryText(ctx));
   await store.set({ pending, session: initial(), events: [], lines: [], shots: {} });
-  await flush();
+  await flushNow();
   try {
     await writeFile(`${base}/summary.html`, dataUrl('text/html', toBase64(renderSummaryHtml({ ...ctx, shots, inlineShots: true }))));
   } catch {
     const { pending: p1 = {} } = await store.get('pending');
     await store.set({ pending: putText(p1, `${base}/summary.html`, 'text/html', renderSummaryHtml({ ...ctx, shots, inlineShots: false })) });
-    await flush();
+    await flushNow();
   }
 }
 
