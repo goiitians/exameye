@@ -1,7 +1,10 @@
 (() => {
+  // extension reload while this page is still open invalidates chrome.runtime, sync or in the callback
   const send = (name, data) => {
     try {
-      chrome.runtime.sendMessage({ type: 'cs', name, data }, () => chrome.runtime.lastError);
+      chrome.runtime.sendMessage({ type: 'cs', name, data }, () => {
+        try { void chrome.runtime.lastError; } catch (e) {}
+      });
     } catch (e) {}
   };
   const clip = (name) => (e) => send(name, { len: name === 'PASTE' ? (e.clipboardData?.getData('text') || '').length : String(getSelection() || '').length });

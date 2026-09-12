@@ -50,3 +50,29 @@ test('devtools heuristic fires once per opening', () => {
   window.outerWidth = 1300; L['win:resize']();
   assert.equal(sent.length, n + 2);
 });
+
+test('sendMessage throwing synchronously does not throw', () => {
+  const realChrome = globalThis.chrome;
+  globalThis.chrome = { runtime: { sendMessage: () => { throw new Error('boom'); }, lastError: undefined } };
+  assert.doesNotThrow(() => L['doc:copy']({}));
+  globalThis.chrome = realChrome;
+});
+
+test('missing or undefined chrome.runtime does not throw', () => {
+  const realChrome = globalThis.chrome;
+  globalThis.chrome = {};
+  assert.doesNotThrow(() => L['doc:copy']({}));
+  globalThis.chrome = undefined;
+  assert.doesNotThrow(() => L['doc:copy']({}));
+  globalThis.chrome = realChrome;
+});
+
+test('callback invoked after chrome.runtime is torn down does not throw', () => {
+  const realChrome = globalThis.chrome;
+  let savedCb;
+  globalThis.chrome = { runtime: { sendMessage: (m, cb) => { savedCb = cb; }, lastError: undefined } };
+  L['doc:copy']({});
+  globalThis.chrome = undefined;
+  assert.doesNotThrow(() => savedCb());
+  globalThis.chrome = realChrome;
+});
