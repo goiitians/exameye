@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "ExamEye",
+  "version": "0.1.0",
+  "description": "Records browser activity during an online exam. Records only; never blocks.",
+  "minimum_chrome_version": "120",
+  "permissions": ["tabs", "webNavigation", "alarms", "storage", "unlimitedStorage", "downloads", "downloads.ui", "idle", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "src/sw.js", "type": "module" },
+  "options_page": "src/options/options.html",
+  "action": { "default_popup": "src/popup/popup.html", "default_title": "ExamEye" },
+  "incognito": "spanning"
+}

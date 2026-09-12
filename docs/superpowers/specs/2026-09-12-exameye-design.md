@@ -121,7 +121,7 @@ turns effects into API calls.
   ```
   { state:'ARMED', id, seat, startedAt, examTabId, examWindowId, examUrl, seq,
     lastActivityAt, tabLostAt: null|ms, windowState: 'normal'|'minimized'|'fullscreen'|..,
-    away: { tabAt:null|ms, focusAt:null|ms, minAt:null|ms, idleAt:null|ms } }
+    away: { tabAt:null|ms, focusAt:null|ms, minAt:null|ms, idleAt:null|ms, idleState:null|'idle'|'locked' } }
   ```
   `tabLostAt !== null` is the "exam tab gone" sub-condition (no separate state; it must survive
   restarts and keeps the reducer small).
@@ -142,8 +142,10 @@ turns effects into API calls.
 | IDLE | NAV | `classify(url)==='start'` | `SESSION_ARMED{url}` | ARMED; `id = sessionId(at, seat)`, examTabId/WindowId = input; effect `ABANDON_ALARM_CLEAR` |
 | IDLE | anything else | — | none | IDLE |
 | ARMED | NAV | tab is exam tab, class `result` | `SESSION_DISARMED{outcome:'RESULT',url}` | IDLE; effect `END{outcome:'RESULT'}` |
-| ARMED | NAV | tab is exam tab, url ≠ examUrl | `EXAM_NAV{url}` | ARMED, examUrl updated |
+| ARMED | NAV | tab is exam tab, class ≠ `result`, url ≠ examUrl, class ≠ null | `EXAM_NAV{url}` | ARMED, examUrl updated |
+| ARMED | NAV | tab is exam tab navigated off-site (`classify(url)===null`), url ≠ examUrl | `EXAM_NAV{url}` then `PARALLEL_PAGE{url,trigger:'committed',incognito:false}` | ARMED, examUrl updated |
 | ARMED | NAV | other tab, `tabLostAt!==null`, class ∈ {start,exam,result} | `EXAM_NAV{url,adopted:true}` then re-run the exam-tab NAV rule (so a result page disarms) | examTabId/WindowId = input, tabLostAt=null; effect `ABANDON_ALARM_CLEAR` |
+| ARMED | NAV | any other tab, class `result` | `SESSION_DISARMED{outcome:'RESULT',url}`, ids from the tab that committed it | IDLE; effect `END{outcome:'RESULT'}` |
 | ARMED | NAV | other tab, otherwise | `PARALLEL_PAGE{url,trigger:'committed',incognito:false}` | ARMED |
 | ARMED | TAB_ACTIVATED | exam tab, `away.tabAt!==null` | `TAB_RETURN{awayMs}` | away.tabAt=null |
 | ARMED | TAB_ACTIVATED | other tab, `away.tabAt===null` | `TAB_SWITCH{toTabId,toUrl,toTitle,toWindowId,incognito}`, `PARALLEL_PAGE{url,title,trigger:'activated',incognito}` | away.tabAt=at |
@@ -162,8 +164,10 @@ turns effects into API calls.
 | ARMED | CS | name FULLSCREEN_EXIT | `FULLSCREEN_EXIT{source:'document'}` | ARMED |
 | ARMED | CS | name DEVTOOLS | `DEVTOOLS_OPENED{dw,dh}` | ARMED |
 | ARMED | CS | name VISIBILITY / BLUR / FOCUS | none | effect `PROBE` (SW queries focus + window state and dispatches FOCUS and WINDOW_STATE) |
-| ARMED | IDLE | state idle/locked, `away.idleAt===null` | `IDLE_START{state}` | away.idleAt=at |
-| ARMED | IDLE | state active, `away.idleAt!==null` | `IDLE_END{idleMs}` | away.idleAt=null |
+| ARMED | IDLE | state ≠ active, `away.idleAt===null` | `IDLE_START{state}` | away.idleAt=at, away.idleState=state |
+| ARMED | IDLE | state ≠ active, `away.idleAt!==null`, state ≠ `away.idleState` | `IDLE_END{idleMs}` then `IDLE_START{state}` | away.idleAt=at, away.idleState=state |
+| ARMED | IDLE | state ≠ active, state === `away.idleState` | none | ARMED |
+| ARMED | IDLE | state active, `away.idleAt!==null` | `IDLE_END{idleMs}` | away.idleAt=null, away.idleState=null |
 | ARMED | DOWNLOAD | — | `DOWNLOAD_STARTED{url,filename,mime}` | ARMED |
 | ARMED | TICK | — | as WINDOW_STATE for exam window; if `!examTabPresent && tabLostAt===null` as TAB_REMOVED | lastActivityAt=at |
 | ARMED | STARTUP | `examTabs` non-empty | none (GAP is a separate input) | examTabId/WindowId = examTabs[0], tabLostAt=null; away.* reset to null (open intervals cannot be closed correctly after a restart); effect `ABANDON_ALARM_CLEAR` |
@@ -213,12 +217,12 @@ Field `data` per event; every event also has `seq`, `ts` (ISO 8601 UTC), `t` (ep
 | Event | Source API | `data` fields | Screenshot |
 |---|---|---|---|
 | SESSION_ARMED | webNavigation.onCommitted (frameId 0) | url | yes |
-| SESSION_DISARMED | onCommitted (result) / alarm `abandon` | outcome (`RESULT`/`ABANDONED`), url? | yes (RESULT only; ABANDONED has no tab) |
+| SESSION_DISARMED | onCommitted (result, any tab) / alarm `abandon` | outcome (`RESULT`/`ABANDONED`), url? | yes (RESULT only, from the tab that committed; ABANDONED has no tab) |
 | EXAM_NAV | onCommitted on exam tab | url, adopted? | no |
 | EXAM_TAB_CLOSED | tabs.onRemoved / TICK backstop | — | no |
 | TAB_SWITCH | tabs.onActivated | toTabId, toUrl, toTitle, toWindowId, incognito | yes |
 | TAB_RETURN | tabs.onActivated (exam tab) | awayMs | no |
-| PARALLEL_PAGE | onCommitted (other tab) / onActivated | url, title?, trigger (`committed`/`activated`), incognito | yes when trigger=`activated` |
+| PARALLEL_PAGE | onCommitted (other tab, or exam tab navigated off-site) / onActivated | url, title?, trigger (`committed`/`activated`), incognito | yes when trigger=`activated` |
 | WINDOW_MINIMIZED | windows.onFocusChanged→windows.get; TICK poll; CS visibility PROBE | — | no |
 | WINDOW_RESTORED | same | minimizedMs | no |
 | FOCUS_LEFT_CHROME | windows.onFocusChanged (WINDOW_ID_NONE); CS blur PROBE | — | yes (best effort) |
@@ -233,9 +237,41 @@ Field `data` per event; every event also has `seq`, `ts` (ISO 8601 UTC), `t` (ep
 | DEVTOOLS_OPENED | CS resize heuristic (outer−inner ≥ 160 px) | dw, dh | yes |
 | IDLE_START | chrome.idle.onStateChanged | state (`idle`/`locked`) | no |
 | IDLE_END | chrome.idle.onStateChanged | idleMs | no |
-| DOWNLOAD_STARTED | downloads.onCreated (not `byExtensionId===runtime.id`) | url, filename, mime | yes |
+| DOWNLOAD_STARTED | downloads.onCreated (not `byExtensionId===runtime.id`, and not a `data:` URL — see §14) | url, filename, mime | yes |
 | EXTENSION_GAP | SW boot / runtime.onStartup | lastSeenAt, gapMs, reason (`sw-restart`/`browser-restart`) | no |
 | PERIODIC | alarm `periodic` | — | yes |
+
+### 5a. Screensaver / lock attribution (added 2026-09-12)
+
+A screensaver or lock screen makes the exam page lose focus exactly like Alt-Tab does, and the
+exam site itself reacts to that blur. The extension must tell the two apart. Signal:
+`chrome.idle.onStateChanged` fires `"locked"` when "the screen is locked or the screensaver
+activates" (Chrome docs), and `"idle"` when no input has been generated system-wide for the
+detection interval. Both are recorded as `IDLE_START{state}` / `IDLE_END{idleMs}`; a real machine
+commonly reports `idle` first (detection interval) and only `locked` once the screensaver actually
+engages, so the reducer closes the `idle` interval and opens a fresh `locked` one on that
+transition (§4) instead of silently dropping the second state. Attribution itself happens in
+`tally` (pure, at summary time), so the append-only log format is unchanged.
+
+Rule, applied per `FOCUS_LEFT_CHROME` interval `[t0, t1]` (`t1` = matching `FOCUS_RETURNED`, or
+session end if none):
+- `screensaver` if an `IDLE_START{state:'locked'}` occurs at any `t` with `t0 - 3000 <= t <= t1`
+  (the idle poller can report up to ~1 s after focus is lost; 3 s is the tolerance).
+- else `idle` if an `IDLE_START{state:'idle'}` occurs in the same window (no input anywhere on
+  the machine: the candidate was not using another application; covers platforms where the
+  screensaver is not reported as `locked`).
+- else `user`.
+
+`tally` output: `counts.SCREENSAVER` = number of `IDLE_START{state:'locked'}`;
+`attribution = { screensaver, idle, user }` = number of `FOCUS_LEFT_CHROME` in each class;
+`durations.focusLeftMs` = user-attributed intervals only; `durations.screensaverMs` = sum of
+locked intervals; `durations.idleMs` = sum of idle-state intervals (locked intervals are not
+double-counted there).
+
+Verified 2026-09-12: the API contract is documented; a live macOS test with a manually launched
+`ScreenSaverEngine` did not produce `locked` because a manual launch does not post the system
+notification Chromium observes, so the real trigger (idle timeout / hot corner) must be checked
+during centre dry-run (docs/centre-setup.md step 6). The `idle` fallback exists for that case.
 
 Content-script names on the wire (`CS` input): `COPY`, `CUT`, `PASTE`, `CONTEXTMENU`, `PRINT`,
 `FULLSCREEN_EXIT`, `DEVTOOLS`, `VISIBILITY{hidden}`, `BLUR`, `FOCUS`.
@@ -328,18 +364,19 @@ One JSON object per line, same order as log.txt (no header line):
 ExamEye summary
 Session:   20260912-091502_A17   Seat: A17
 Started:   2026-09-12 09:15:02 (+05:30)   Ended: 2026-09-12 12:10:44   Outcome: RESULT
-Duration:  2h55m42s
+Duration:  02:55:42
 Log chain: OK (312 lines)
 
 Counts
-  TAB_SWITCH .............. 4
-  FOCUS_LEFT_CHROME ....... 2
+  TAB_SWITCH ............. 4
+  FOCUS_LEFT_CHROME ...... 2
   ... (every event name with count > 0, alphabetical)
 
 Time away
   Tab away ......... 00:03:12
-  Focus left ....... 00:01:05
+  Focus left ....... 00:01:05   (user; screensaver: 1, idle: 0 not counted)
   Minimized ........ 00:00:00
+  Screensaver/lock . 00:04:10
   Idle ............. 00:00:00
 
 Parallel pages (focused time, visits)
@@ -478,3 +515,9 @@ recovery beyond re-injection on reload.
    `chrome.downloads.search()` from the SW and reads `item.filename`.
 9. **Tab discard** (Memory Saver / Edge sleeping tabs) — the content script unloads with the tab;
    SW-side events (focus, activation, navigation) continue; the page-level events resume on reload.
+
+- **`data:`-URL downloads are not logged.** The extension's own file writes are `data:` downloads, and
+  under DevTools/CDP download overrides `byExtensionId` is undefined for them, which produced an
+  unbounded write→DOWNLOAD_STARTED→write loop in the integration harness. `downloads.onCreated`
+  therefore ignores every `data:` URL. A student export via `<a download href="data:…">` or a
+  canvas save is consequently not recorded; `http(s):` and `blob:` downloads are.

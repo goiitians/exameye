@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ExamEye options</title>
+<style>
+  body { font: 14px system-ui; margin: 24px; max-width: 640px; }
+  label { display: block; margin: 12px 0 4px; font-weight: 600; }
+  input { width: 100%; padding: 6px; box-sizing: border-box; }
+  button { margin-top: 16px; padding: 8px 16px; }
+  #status { white-space: pre-line; margin-top: 12px; }
+  #status.ok { color: #070; }
+  #status.err { color: #a00; }
+  #dest, #downloads-note { margin-top: 12px; color: #444; font-size: 13px; }
+</style>
+<h1>ExamEye configuration</h1>
+<form id="form">
+  <label>Exam start URL prefix<input name="startPrefix" placeholder="https://exam.example.com/start"></label>
+  <label>Exam in-progress URL prefix (optional; blank = start page origin)<input name="examPrefix"></label>
+  <label>Result URL prefix<input name="resultPrefix" placeholder="https://exam.example.com/result"></label>
+  <label>Seat / Centre ID<input name="seat"></label>
+  <label>Output subfolder under Downloads<input name="subfolder"></label>
+  <label>Periodic screenshot interval (minutes)<input name="shotIntervalMin" type="number" min="1" max="60"></label>
+  <label>Abandon session after exam tab gone (minutes)<input name="abandonMin" type="number" min="1" max="120"></label>
+  <button type="submit">Save</button>
+</form>
+<div id="status"></div>
+<div id="dest"></div>
+<div id="downloads-note">Chrome's "Ask where to save each file" (chrome://settings/downloads) must be off, or every screenshot and log will prompt for a save location.</div>
+<script type="module" src="options.js"></script>

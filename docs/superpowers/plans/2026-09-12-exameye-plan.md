@@ -1194,7 +1194,7 @@ git commit -m "feat(core): pending-write map and data URL encoding"
 - Test: `tests/unit/counters.test.js`
 
 **Interfaces:**
-- Produces: `tally(events): { counts: {[name]: n}, durations: {tabAwayMs, focusLeftMs, minimizedMs, idleMs}, parallel: Array<{url, title, incognito, visits, focusedMs}> }` sorted by `focusedMs` desc. Focused time of a parallel page runs from its `activated` PARALLEL_PAGE until the next TAB_RETURN, FOCUS_LEFT_CHROME, WINDOW_MINIMIZED, SESSION_DISARMED, any `activated` PARALLEL_PAGE, or a `committed` PARALLEL_PAGE on the same tab (which starts attribution to the new URL). Used by the popup (Task 17) and summaries (Tasks 20–21).
+- Produces: `tally(events): { counts: {[name]: n}, durations: {tabAwayMs, focusLeftMs, minimizedMs, idleMs}, parallel: Array<{url, title, incognito, visits, focusedMs}> }` sorted by `focusedMs` desc. Focused time of a parallel page runs from its `activated` PARALLEL_PAGE until the next TAB_RETURN, FOCUS_LEFT_CHROME, WINDOW_MINIMIZED, SESSION_DISARMED, any `activated` PARALLEL_PAGE, or a `committed` PARALLEL_PAGE on the same tab (which starts attribution to the new URL). Used by the popup (Task 17) and summaries (Tasks 20–21). **See Addendum A (end of plan): screensaver/idle attribution is part of this task.**
 
 - [ ] **Step 1: Write the failing test**
 
@@ -2966,3 +2966,22 @@ git commit -m "docs: centre setup checklist"
 - **Type consistency:** `reduce(session, input, cfg)` returns `{session, events, effects}` everywhere; `END` effect carries `{outcome, session}`; `takeShots` returns `[{file, b64}]` consumed as `added`; `pending` is `{[path]: {mime, b64}}`; `integrity` is `{ok, firstBad, lines}` in both renderers; `meta.lastSeenAt` (not `lastTickAt`) in sw and spec.
 - **Placeholder scan:** no TBD/TODO; every step has code and an exact command.
 
+
+
+---
+
+## Addendum A — screensaver / lock attribution (owner requirement added 2026-09-12 during execution)
+
+Spec §5a is the authority. Affects Task 11 (counters), Task 17 (popup), Task 19 (summary.txt), Task 20 (summary.html), Task 23 (centre-setup dry-run step). No reducer, log-format, or SW change.
+
+**Task 11 additions** — `tally(events)` also returns:
+- `counts.SCREENSAVER`: number of `IDLE_START` events with `data.state === 'locked'` (in addition to the normal `IDLE_START` count).
+- `attribution: { screensaver: n, idle: n, user: n }` over `FOCUS_LEFT_CHROME` events, classified per spec §5a (window `[t0 - 3000, t1]`, `t1` = matching `FOCUS_RETURNED` time or the last event's time if none).
+- `durations.focusLeftMs` counts **user-attributed** intervals only; `durations.screensaverMs` = sum of `idleMs` of `IDLE_END` events whose matching `IDLE_START` had `state:'locked'`; `durations.idleMs` = the same for `state:'idle'`. Empty input: `durations` gains `screensaverMs: 0`, `attribution: { screensaver: 0, idle: 0, user: 0 }`, `counts` unchanged.
+- Tests to add (TDD): (1) focus lost at T, `IDLE_START{locked}` at T+800, `IDLE_END{idleMs}` , `FOCUS_RETURNED` → attribution.screensaver 1, focusLeftMs 0, screensaverMs = idleMs, counts.SCREENSAVER 1; (2) `IDLE_START{locked}` 2 s **before** focus loss → still screensaver; (3) `IDLE_START{idle}` inside the window → idle; (4) no idle event → user, focusLeftMs counted; (5) the existing Task 11 test's expectations updated for the new keys only.
+
+**Task 19 / 20** — summary.txt "Time away" block and summary.html time-away table use the exact lines shown in spec §8 (Focus left annotated with the screensaver/idle counts; new "Screensaver/lock" row). Counts block lists `SCREENSAVER` like any other count.
+
+**Task 17** — popup shows `SCREENSAVER` in the counters list (no special UI).
+
+**Task 23** — dry-run step: trigger the real screensaver (hot corner or idle timeout), resume, and confirm the popup shows SCREENSAVER 1 and the log has `IDLE_START state=locked`; if the platform never reports `locked`, note that the `idle` fallback classification applies.
