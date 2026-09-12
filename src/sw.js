@@ -79,20 +79,27 @@ export function dispatch(input) {
       await store.set({ pending });
     }
     const endEffect = r.effects.find(e => e.type === 'END');
-    if (endEffect) await store.patchMeta({ pendingEnd: { outcome: endEffect.outcome, session: endEffect.session } });
-    await store.set({ session: r.session, events, lines, lastHash });
+    let pendingEnd;
+    if (endEffect) {
+      const { shots: endShots = {} } = await store.get('shots');
+      pendingEnd = { outcome: endEffect.outcome, session: endEffect.session, events: [...events], lines: [...lines], shots: endShots };
+      const { meta: currentMeta = {} } = await store.get('meta');
+      await store.set({ session: r.session, events, lines, lastHash, meta: { ...currentMeta, pendingEnd } });
+    } else {
+      await store.set({ session: r.session, events, lines, lastHash });
+    }
     await store.patchMeta({ lastSeenAt: input.at });
-    await runEffects(r.effects, cfg);
+    await runEffects(r.effects, cfg, pendingEnd);
     if (newEvents.length) await flushNow();
   });
 }
 
-async function runEffects(effects, cfg) {
+async function runEffects(effects, cfg, pendingEnd) {
   for (const e of effects) {
     if (e.type === 'ABANDON_ALARM_SET') await alarms.setAt('abandon', e.when);
     else if (e.type === 'ABANDON_ALARM_CLEAR') await alarms.clear('abandon');
     else if (e.type === 'PROBE') setTimeout(probe, 0);
-    else if (e.type === 'END') await endSession(e, cfg);
+    else if (e.type === 'END') await endSession(pendingEnd, cfg);
   }
 }
 
@@ -136,14 +143,19 @@ async function flushNow() {
 
 export const flush = () => enqueue(flushNow);
 
+// e.events/e.lines/e.shots are a snapshot taken when pendingEnd was written (dispatch()), not
+// read live from storage: a replay (recover()/tick() re-running this from meta.pendingEnd) must
+// render byte-identical files regardless of what the first, possibly-interrupted attempt already
+// did to the live events/lines/shots keys.
 async function endSession(e, cfg) {
-  const { events = [], lines = [], shots = {}, pending: p0 = {} } = await store.get(['events', 'lines', 'shots', 'pending']);
-  const base = `${cfg.subfolder}/${e.session.id}`;
-  const ctx = { session: e.session, outcome: e.outcome, endedAt: now(), events, tally: tally(events), integrity: { ...(await verify(lines)), lines: lines.length } };
+  const { session, outcome, events, lines, shots } = e;
+  const base = `${cfg.subfolder}/${session.id}`;
+  const ctx = { session, outcome, endedAt: now(), events, tally: tally(events), integrity: { ...(await verify(lines)), lines: lines.length } };
+  const { pending: p0 = {} } = await store.get('pending');
   let pending = putText(p0, `${base}/log.txt`, 'text/plain', lines.join('\n') + '\n');
   pending = putText(pending, `${base}/events.jsonl`, 'application/json', events.map(ev => JSON.stringify(ev)).join('\n') + '\n');
   pending = putText(pending, `${base}/summary.txt`, 'text/plain', renderSummaryText(ctx));
-  await store.set({ pending, session: initial(), events: [], lines: [], shots: {} });
+  await store.set({ pending });
   await flushNow();
   try {
     await writeFile(`${base}/summary.html`, dataUrl('text/html', toBase64(renderSummaryHtml({ ...ctx, shots, inlineShots: true }))));
@@ -152,14 +164,20 @@ async function endSession(e, cfg) {
     await store.set({ pending: putText(p1, `${base}/summary.html`, 'text/html', renderSummaryHtml({ ...ctx, shots, inlineShots: false })) });
     await flushNow();
   }
-  await store.patchMeta({ pendingEnd: null });
+  const { meta: currentMeta = {} } = await store.get('meta');
+  await store.set({ events: [], lines: [], shots: {}, meta: { ...currentMeta, pendingEnd: null } });
 }
 
-async function finishPendingEnd() {
-  const { meta = {} } = await store.get('meta');
-  if (!meta.pendingEnd) return;
-  const cfg = await loadConfig();
-  if (cfg) await enqueue(() => endSession(meta.pendingEnd, cfg));
+// Reads meta.pendingEnd INSIDE the enqueued closure, not before: a tick/recover racing an
+// in-flight dispatch()+endSession() must see it only after that call (and its own pendingEnd
+// clear) has actually finished, never a stale value captured before the queue was even reached.
+function finishPendingEnd() {
+  return enqueue(async () => {
+    const { meta = {} } = await store.get('meta');
+    if (!meta.pendingEnd) return;
+    const cfg = await loadConfig();
+    if (cfg) await endSession(meta.pendingEnd, cfg);
+  });
 }
 
 export async function tick() {

@@ -27,15 +27,79 @@ test('result navigation writes all files, then clears the session', async () => 
   assert.deepEqual([events, lines, shots, pending], [[], [], {}, {}]);
 });
 
+test('a tick that fires while endSession is mid-flush does not re-run it over the cleared state', async () => {
+  await sw.dispatch({ kind: 'NAV', tabId: 15, windowId: 3, url: 'https://e.x/start', at: 900000 });
+  const { session: armed } = await get('session');
+  const base = `ExamEye/${armed.id}/`;
+  let releaseGate, started = false;
+  const gate = new Promise((r) => { releaseGate = r; });
+  const realDownload = chrome.downloads.download.bind(chrome.downloads);
+  chrome.downloads.download = async (opts) => {
+    if (opts.filename === `${base}log.txt`) { started = true; await gate; }
+    return realDownload(opts);
+  };
+  // log.txt is legitimately rewritten whole on every flush, so it was already written once by
+  // the arm dispatch above; only calls from this point on (the disarm, and whatever tick races
+  // in) are relevant to "was endSession replayed redundantly".
+  const before = chrome.downloads.calls.length;
+  const disarmP = sw.dispatch({ kind: 'NAV', tabId: 15, windowId: 3, url: 'https://e.x/result', at: 900500 });
+  for (let i = 0; i < 50 && !started; i++) await new Promise((r) => setTimeout(r, 0));
+  assert.ok(started, 'the end-of-session flush never reached the gated log.txt download');
+  const tickP = sw.tick();
+  await new Promise((r) => setTimeout(r, 20));
+  releaseGate();
+  await Promise.all([disarmP, tickP]);
+  await sw.settled();
+  chrome.downloads.download = realDownload;
+  const newCalls = chrome.downloads.calls.slice(before);
+  const logCalls = newCalls.filter(c => c.filename === `${base}log.txt`);
+  assert.equal(logCalls.length, 1, 'log.txt must be written exactly once for this disarm, not re-rendered by the racing tick');
+  assert.match(decode(logCalls[0].url), /SESSION_ARMED/);
+  const eventsCalls = newCalls.filter(c => c.filename === `${base}events.jsonl`);
+  assert.equal(eventsCalls.length, 1, 'events.jsonl must be written exactly once');
+  assert.notEqual(decode(eventsCalls[0].url).trim(), '', 'events.jsonl must not be re-rendered empty');
+  assert.equal((await get('meta')).meta.pendingEnd, null);
+});
+
+test('recover() renders log.txt/events.jsonl from the pendingEnd snapshot, not from already-cleared live storage', async () => {
+  await sw.dispatch({ kind: 'NAV', tabId: 14, windowId: 3, url: 'https://e.x/start', at: 800000 });
+  const { session: armed } = await get('session');
+  await sw.dispatch({ kind: 'NAV', tabId: 14, windowId: 3, url: 'https://e.x/result', at: 800500 });
+  // this session has already ended normally; borrow its real (correct) rendered content as the
+  // "snapshot" for a synthetic replay below, so the expected output is derived the same way
+  // endSession itself derives it, not hand-typed.
+  const jsonlEvents = decode(byName('events.jsonl').at(-1).url).trimEnd().split('\n').map(l => JSON.parse(l));
+  const logLines = decode(byName('log.txt').at(-1).url).trimEnd().split('\n');
+  const base = `ExamEye/${armed.id}/`;
+  const expectedLog = logLines.join('\n') + '\n';
+  const expectedEvents = jsonlEvents.map(ev => JSON.stringify(ev)).join('\n') + '\n';
+  // simulate the state a crash right after a successful flush but before the final clear used to
+  // leave under the pre-fix code: session IDLE, events/lines/shots already reset live, pending
+  // holding something stale at the same paths, pendingEnd still set.
+  await chrome.storage.local.set({
+    session: { state: 'IDLE' }, events: [], lines: [], shots: {},
+    pending: { [`${base}log.txt`]: { mime: 'text/plain', b64: Buffer.from('STALE\n').toString('base64') } },
+  });
+  const { meta } = await get('meta');
+  await chrome.storage.local.set({ meta: { ...meta, pendingEnd: { outcome: 'RESULT', session: armed, events: jsonlEvents, lines: logLines, shots: {} } } });
+  await sw.recover();
+  await sw.settled();
+  const finalLog = chrome.downloads.calls.filter(c => c.filename === `${base}log.txt`).at(-1);
+  assert.equal(decode(finalLog.url), expectedLog, 'log.txt must be replayed from the snapshot, not left stale or emptied');
+  const finalEvents = chrome.downloads.calls.filter(c => c.filename === `${base}events.jsonl`).at(-1);
+  assert.equal(decode(finalEvents.url), expectedEvents, 'events.jsonl must be replayed from the snapshot, not emptied');
+  assert.equal((await get('meta')).meta.pendingEnd, null);
+});
+
 test('recover() finishes an interrupted session end left as meta.pendingEnd', async () => {
   await sw.dispatch({ kind: 'NAV', tabId: 9, windowId: 3, url: 'https://e.x/start', at: 200000 });
   const { session: armed, events, lines, shots } = await get(['session', 'events', 'lines', 'shots']);
   // simulate a SW death right after the session flipped to IDLE but before endSession wrote
-  // any of the final files: session/meta look exactly as dispatch() would have left them.
+  // any of the final files: session/meta look exactly as dispatch() would have left them, with
+  // pendingEnd carrying the full events/lines/shots snapshot as dispatch() now writes it.
   await chrome.storage.local.set({ session: { state: 'IDLE' } });
   const { meta } = await get('meta');
-  await chrome.storage.local.set({ meta: { ...meta, pendingEnd: { outcome: 'RESULT', session: armed } } });
-  await chrome.storage.local.set({ events, lines, shots });
+  await chrome.storage.local.set({ meta: { ...meta, pendingEnd: { outcome: 'RESULT', session: armed, events, lines, shots } } });
   await sw.recover();
   await sw.settled();
   const base = `ExamEye/${armed.id}/`;
