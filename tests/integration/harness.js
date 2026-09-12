@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { readFile, mkdtemp } from 'node:fs/promises';
+import { readFile, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { chromium } from 'playwright';
@@ -33,7 +33,13 @@ export async function launch(config) {
   const cdp = await context.newCDPSession(page);
   await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: downloads, eventsEnabled: true });
   await worker.evaluate((cfg) => chrome.storage.local.set({ config: cfg }), config);
-  return { context, worker, page, downloads, close: () => context.close() };
+  const close = async () => {
+    await context.close();
+    // only the two exact mkdtemp dirs this launch() call created above, nothing else
+    await rm(profile, { recursive: true, force: true });
+    await rm(downloads, { recursive: true, force: true });
+  };
+  return { context, worker, page, downloads, cdp, close };
 }
 
 export const storage = (worker, keys) => worker.evaluate((k) => chrome.storage.local.get(k), keys);

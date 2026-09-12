@@ -72,6 +72,10 @@ test('downloads.onCreated: own data: URL writes are ignored even without byExten
   await chrome.downloads.onCreated.emit({ id: 8, url: 'https://other.x/report.pdf', filename: '/dl/report.pdf', mime: 'application/pdf' });
   await sw.settled();
   assert.equal((await names()).filter(x => x === 'DOWNLOAD_STARTED').length, before + 1, 'https: URL from another origin must still fire DOWNLOAD_STARTED');
+  const beforeBlob = (await names()).filter(x => x === 'DOWNLOAD_STARTED').length;
+  await chrome.downloads.onCreated.emit({ id: 9, url: 'blob:https://e.x/1234-5678', filename: 'download.png', mime: 'image/png' });
+  await sw.settled();
+  assert.equal((await names()).filter(x => x === 'DOWNLOAD_STARTED').length, beforeBlob + 1, 'blob: URL (e.g. a page-initiated canvas export) must still fire DOWNLOAD_STARTED');
 });
 
 test('tick alarm reconciles state and updates lastSeenAt', async () => {

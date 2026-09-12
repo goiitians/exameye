@@ -206,7 +206,8 @@ chrome.windows.onCreated.addListener((w) => dispatch({ kind: 'WINDOW_CREATED', w
 chrome.windows.onRemoved.addListener((windowId) => dispatch({ kind: 'WINDOW_REMOVED', windowId, at: now() }));
 chrome.idle.onStateChanged.addListener((state) => dispatch({ kind: 'IDLE', state, at: now() }));
 chrome.downloads.onCreated.addListener((item) => {
-  // own writes; byExtensionId is not reliable under DevTools download overrides
+  // own writes are data: URLs and byExtensionId is unreliable under DevTools download overrides;
+  // this also drops page-initiated data: downloads (e.g. <a download href="data:...">), accepted.
   if (item.byExtensionId === chrome.runtime.id || item.url?.startsWith('data:')) return;
   dispatch({ kind: 'DOWNLOAD', url: item.url, filename: item.filename, mime: item.mime, at: now() });
 });
