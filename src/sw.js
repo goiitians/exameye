@@ -11,6 +11,8 @@ import { GENESIS, shortHash } from './core/hashchain.js';
 import { needsShot } from './core/events.js';
 import { shotFile } from './core/ids.js';
 import { classify } from './core/urlmatch.js';
+import { suppressUi, writeFile, eraseOwnCompleted } from './adapters/downloads.js';
+import { putText, putBase64, remove, dataUrl } from './core/sink.js';
 
 const GAP_MS = 90000;
 const SHOT_GAP_MS = 2000;
@@ -66,9 +68,17 @@ export function dispatch(input) {
       lines.push(line);
       events.push(ev);
     }
+    if (newEvents.length) {
+      const base = `${cfg.subfolder}/${(r.session.state === 'ARMED' ? r.session : session).id}`;
+      let { pending = {} } = await store.get('pending');
+      pending = putText(pending, `${base}/log.txt`, 'text/plain', lines.join('\n') + '\n');
+      for (const s of added) pending = putBase64(pending, `${base}/${s.file}`, 'image/jpeg', s.b64);
+      await store.set({ pending });
+    }
     await store.set({ session: r.session, events, lines, lastHash });
     await store.patchMeta({ lastSeenAt: input.at });
     await runEffects(r.effects, cfg);
+    if (newEvents.length) await flush();
   });
 }
 
@@ -103,11 +113,38 @@ async function takeShots(events) {
   return added;
 }
 
+let flushing = false, flushAgain = false;
+
+export async function flush() {
+  if (flushing) { flushAgain = true; return; }
+  flushing = true;
+  try {
+    do {
+      flushAgain = false;
+      let { pending = {} } = await store.get('pending');
+      let error = null;
+      for (const [path, f] of Object.entries(pending)) {
+        try {
+          await writeFile(path, dataUrl(f.mime, f.b64));
+          pending = remove(pending, path);
+        } catch (e) {
+          error = `${path}: ${e?.message || e}`;
+        }
+      }
+      await store.set({ pending });
+      await store.patchMeta({ lastFlushAt: now(), lastFlushError: error });
+    } while (flushAgain);
+  } finally {
+    flushing = false;
+  }
+}
+
 export async function tick() {
   const { session } = await store.get('session');
   const windows = (await getAllWindows()).map(w => ({ id: w.id, state: w.state }));
   const examTabPresent = session?.state === 'ARMED' && (await getTab(session.examTabId)) !== null;
   await dispatch({ kind: 'TICK', at: now(), windows, examTabPresent });
+  await flush();
 }
 
 export async function recover() {
@@ -131,11 +168,13 @@ export async function probe() {
 }
 
 async function boot() {
+  await suppressUi();
   await applyConfig();
   await alarms.setPeriodic('tick', 0.5);
   await chrome.idle.setDetectionInterval(60);
 }
 
+eraseOwnCompleted();
 chrome.runtime.onInstalled.addListener(boot);
 chrome.runtime.onStartup.addListener(async () => { await boot(); await recover(); });
 chrome.storage.onChanged.addListener((changes) => { if (changes.config) applyConfig(); });
