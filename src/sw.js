@@ -84,7 +84,10 @@ export function dispatch(input) {
       const { shots: endShots = {} } = await store.get('shots');
       pendingEnd = { outcome: endEffect.outcome, session: endEffect.session, events: [...events], lines: [...lines], shots: endShots };
       const { meta: currentMeta = {} } = await store.get('meta');
-      await store.set({ session: r.session, events, lines, lastHash, meta: { ...currentMeta, pendingEnd } });
+      // events/lines/shots are cleared here, atomically with the pendingEnd snapshot that now
+      // holds them: leaving the live clear for endSession's own (later, possibly much later)
+      // final write would risk wiping a NEW session armed in between (see below).
+      await store.set({ session: r.session, events: [], lines: [], shots: {}, lastHash, meta: { ...currentMeta, pendingEnd } });
     } else {
       await store.set({ session: r.session, events, lines, lastHash });
     }
@@ -164,8 +167,10 @@ async function endSession(e, cfg) {
     await store.set({ pending: putText(p1, `${base}/summary.html`, 'text/html', renderSummaryHtml({ ...ctx, shots, inlineShots: false })) });
     await flushNow();
   }
-  const { meta: currentMeta = {} } = await store.get('meta');
-  await store.set({ events: [], lines: [], shots: {}, meta: { ...currentMeta, pendingEnd: null } });
+  // events/lines/shots are NOT touched here: they were already cleared atomically with the
+  // pendingEnd snapshot when it was created (dispatch()), and by the time a replay reaches this
+  // point they may belong to an entirely different, newer session that has since armed.
+  await store.patchMeta({ pendingEnd: null });
 }
 
 // Reads meta.pendingEnd INSIDE the enqueued closure, not before: a tick/recover racing an

@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { installFakeChrome } from './fake-chrome.js';
+import { verify } from '../../src/core/hashchain.js';
 
 const chrome = installFakeChrome();
 const config = { startPrefix: 'https://e.x/start', examPrefix: '', resultPrefix: 'https://e.x/result', seat: 'A17', subfolder: 'ExamEye', shotIntervalMin: 10, abandonMin: 10 };
@@ -133,4 +134,38 @@ test('if the inline summary.html is rejected, the linked variant is written inst
   assert.ok(htmls[1].includes('<img src="screenshots/'));
   assert.ok(!htmls[1].includes('data:image/jpeg'));
   assert.deepEqual((await get('pending')).pending, {});
+});
+
+// Last test in the file: it leaves the module's session ARMED on purpose (a fresh session armed
+// after the simulated crash), so nothing after it may assume IDLE.
+test('replaying an old pendingEnd does not wipe a new session armed in the meantime', async () => {
+  await sw.dispatch({ kind: 'NAV', tabId: 16, windowId: 3, url: 'https://e.x/start', at: 1000000 });
+  const { session: oldArmed, events, lines, shots } = await get(['session', 'events', 'lines', 'shots']);
+  await sw.dispatch({ kind: 'NAV', tabId: 16, windowId: 3, url: 'https://e.x/result', at: 1000500 });
+  // the old session already ended normally (pendingEnd is null again); rewind pendingEnd to
+  // simulate a crash between the atomic session/pendingEnd write and endSession's own final
+  // pendingEnd clear -- the exact window this regression happens in. events/lines/shots are
+  // already [] / [] / {} from the normal completed end above, matching what that atomic write
+  // now leaves them as.
+  const { meta } = await get('meta');
+  await chrome.storage.local.set({ meta: { ...meta, pendingEnd: { outcome: 'RESULT', session: oldArmed, events, lines, shots } } });
+  // the SW wakes on a NEW start-URL NAV before recover()/tick() gets a chance to replay the old
+  // end -- arms a brand new session while the stale pendingEnd is still sitting in meta.
+  chrome.tabs.list = [{ id: 17, windowId: 3, url: 'https://e.x/start', title: 'Exam', incognito: false }];
+  await sw.dispatch({ kind: 'NAV', tabId: 17, windowId: 3, url: 'https://e.x/start', at: 1001000 });
+  const { session: newArmed, lines: linesBeforeReplay } = await get(['session', 'lines']);
+  assert.equal(newArmed.state, 'ARMED');
+  assert.match(linesBeforeReplay[0], /^# ExamEye session/, 'the new session must have its header line before any replay');
+  // the periodic tick alarm fires next; it must replay the old end from the snapshot without
+  // touching the new session's live events/lines/shots.
+  await sw.tick();
+  await sw.settled();
+  const oldBase = `ExamEye/${oldArmed.id}/`;
+  for (const f of ['log.txt', 'events.jsonl', 'summary.txt', 'summary.html']) assert.ok(byName(f).some(c => c.filename === oldBase + f), `old session's ${f}`);
+  assert.equal((await get('meta')).meta.pendingEnd, null);
+  const { session: afterSession, lines: afterLines } = await get(['session', 'lines']);
+  assert.equal(afterSession.id, newArmed.id, 'the new session must still be the live session');
+  assert.equal(afterSession.state, 'ARMED');
+  assert.match(afterLines[0], /^# ExamEye session/, 'the new session must keep its header line after the old end replays');
+  assert.ok((await verify(afterLines)).ok, 'the new session log must still verify after the old pendingEnd replay');
 });
