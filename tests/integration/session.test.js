@@ -12,8 +12,27 @@ test('arm on start page, record a tab switch, disarm on result, files written', 
   const config = { startPrefix: `${site.origin}/exam/start.html`, examPrefix: '', resultPrefix: `${site.origin}/exam/result.html`, seat: 'T1', subfolder: 'ExamEyeTest', shotIntervalMin: 10, abandonMin: 10 };
   const b = await launch(config);
   try {
+    // chrome.downloads.search() reliably returns [] under Playwright's CDP
+    // Browser.setDownloadBehavior override (confirmed in task-22-report.md fix-round-1, even
+    // immediately after a single manual download() call), so per-file content can't be read
+    // back after the fact. chrome.downloads.onCreated/onChanged do carry full data (url,
+    // filename, state) live on the same items, so an extension page (not the exam site, so it
+    // can't be mistaken for an exam/result page) is opened up front to collect them for the
+    // whole run.
+    const extId = new URL(b.worker.url()).host;
+    const collector = await b.context.newPage();
+    await collector.goto(`chrome-extension://${extId}/src/options/options.html`);
+    await collector.evaluate(() => {
+      window.__dl = [];
+      window.__dlc = [];
+      chrome.downloads.onCreated.addListener((i) => window.__dl.push(i));
+      chrome.downloads.onChanged.addListener((d) => window.__dlc.push(d));
+    });
+    await b.page.bringToFront();
+
     await b.page.goto(`${site.origin}/exam/start.html?c=1`);
     await waitFor(async () => (await storage(b.worker, 'session')).session?.state === 'ARMED');
+    const { session: armed } = await storage(b.worker, 'session');
     // SESSION_ARMED already took a screenshot; sw.js coalesces any further shot within
     // SHOT_GAP_MS (2000ms) onto that same file, so wait it out to get a distinct TAB_SWITCH shot.
     await new Promise(r => setTimeout(r, 2100));
@@ -27,21 +46,12 @@ test('arm on start page, record a tab switch, disarm on result, files written', 
     await waitFor(async () => (await storage(b.worker, 'session')).session?.state === 'IDLE');
     await waitFor(async () => Object.keys((await storage(b.worker, 'pending')).pending || {}).length === 0);
 
-    // Under Playwright's CDP `Browser.setDownloadBehavior` override, real Chrome doesn't honour
-    // chrome.downloads.download()'s `filename` argument the way a non-automated install does, so
-    // asserting on-disk paths is unreliable here. Instead, read back what the extension itself
-    // wrote via chrome.downloads.search() (each item's `url` is the original data: URL) and check
-    // the decoded content, which exercises the real persistence path end to end.
-    //
-    // KNOWN BLOCKER (fix-round-1, see task-22-report.md): chrome.downloads.search({}) reliably
-    // returns [] in this environment, even querying by id or by state:'complete' immediately
-    // after a single manual download() call. This is not a timing/flakiness issue -
-    // onCreated/onChanged fire with full data (url, resolved filename, state:'complete') on the
-    // same item, but the item is never inserted into whatever backing store search() reads under
-    // this CDP override. This assertion is expected to fail until a working read-back mechanism
-    // is found (e.g. capturing onCreated/onChanged live instead of querying after the fact).
-    const items = await b.worker.evaluate(() => chrome.downloads.search({}));
-    const contents = items.map(i => decodeDataUrl(i.url)).filter(Boolean);
+    const final = await storage(b.worker, ['session', 'pending']);
+    assert.equal(final.session?.state, 'IDLE');
+    assert.deepEqual(final.pending, {});
+
+    const created = await collector.evaluate(() => window.__dl);
+    const contents = created.map(i => decodeDataUrl(i.url)).filter(Boolean);
 
     const summary = contents.find(c => c.includes('ExamEye summary'));
     assert.ok(summary, 'expected a summary.txt write');
@@ -50,6 +60,9 @@ test('arm on start page, record a tab switch, disarm on result, files written', 
 
     const log = contents.find(c => c.startsWith('# ExamEye session'));
     assert.ok(log, 'expected a log.txt write');
+    assert.ok(log.split('\n')[0].includes(armed.id), `expected the header line to carry the session id, got: ${log.split('\n')[0]}`);
+
+    assert.ok(created.some(i => i.url?.startsWith('data:image/jpeg')), 'expected at least one screenshot download');
   } finally {
     await b.close();
     site.server.close();
