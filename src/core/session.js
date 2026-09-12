@@ -42,8 +42,13 @@ function disarm(s, out, emit, input, outcome, data = {}) {
 }
 
 function examTabNav(s, input, cfg, emit, out) {
-  if (classify(input.url, cfg) === 'result') return disarm(s, out, emit, input, 'RESULT', { url: input.url });
-  if (input.url !== s.examUrl) { s.examUrl = input.url; emit('EXAM_NAV', { url: input.url }, input); }
+  const cls = classify(input.url, cfg);
+  if (cls === 'result') return disarm(s, out, emit, input, 'RESULT', { url: input.url });
+  if (input.url !== s.examUrl) {
+    s.examUrl = input.url;
+    emit('EXAM_NAV', { url: input.url }, input);
+    if (cls === null) emit('PARALLEL_PAGE', { url: input.url, trigger: 'committed', incognito: false }, input);
+  }
 }
 
 const HANDLERS = {
@@ -55,6 +60,7 @@ const HANDLERS = {
       out.effects.push({ type: 'ABANDON_ALARM_CLEAR' });
       return examTabNav(s, input, cfg, emit, out);
     }
+    if (classify(input.url, cfg) === 'result') return disarm(s, out, emit, input, 'RESULT', { url: input.url });
     emit('PARALLEL_PAGE', { url: input.url, trigger: 'committed', incognito: Boolean(input.incognito) }, input);
   },
   TAB_REMOVED(s, input, cfg, emit, out) {

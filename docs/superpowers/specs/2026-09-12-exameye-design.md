@@ -142,8 +142,10 @@ turns effects into API calls.
 | IDLE | NAV | `classify(url)==='start'` | `SESSION_ARMED{url}` | ARMED; `id = sessionId(at, seat)`, examTabId/WindowId = input; effect `ABANDON_ALARM_CLEAR` |
 | IDLE | anything else | — | none | IDLE |
 | ARMED | NAV | tab is exam tab, class `result` | `SESSION_DISARMED{outcome:'RESULT',url}` | IDLE; effect `END{outcome:'RESULT'}` |
-| ARMED | NAV | tab is exam tab, url ≠ examUrl | `EXAM_NAV{url}` | ARMED, examUrl updated |
+| ARMED | NAV | tab is exam tab, class ≠ `result`, url ≠ examUrl, class ≠ null | `EXAM_NAV{url}` | ARMED, examUrl updated |
+| ARMED | NAV | tab is exam tab navigated off-site (`classify(url)===null`), url ≠ examUrl | `EXAM_NAV{url}` then `PARALLEL_PAGE{url,trigger:'committed',incognito:false}` | ARMED, examUrl updated |
 | ARMED | NAV | other tab, `tabLostAt!==null`, class ∈ {start,exam,result} | `EXAM_NAV{url,adopted:true}` then re-run the exam-tab NAV rule (so a result page disarms) | examTabId/WindowId = input, tabLostAt=null; effect `ABANDON_ALARM_CLEAR` |
+| ARMED | NAV | any other tab, class `result` | `SESSION_DISARMED{outcome:'RESULT',url}`, ids from the tab that committed it | IDLE; effect `END{outcome:'RESULT'}` |
 | ARMED | NAV | other tab, otherwise | `PARALLEL_PAGE{url,trigger:'committed',incognito:false}` | ARMED |
 | ARMED | TAB_ACTIVATED | exam tab, `away.tabAt!==null` | `TAB_RETURN{awayMs}` | away.tabAt=null |
 | ARMED | TAB_ACTIVATED | other tab, `away.tabAt===null` | `TAB_SWITCH{toTabId,toUrl,toTitle,toWindowId,incognito}`, `PARALLEL_PAGE{url,title,trigger:'activated',incognito}` | away.tabAt=at |
@@ -215,12 +217,12 @@ Field `data` per event; every event also has `seq`, `ts` (ISO 8601 UTC), `t` (ep
 | Event | Source API | `data` fields | Screenshot |
 |---|---|---|---|
 | SESSION_ARMED | webNavigation.onCommitted (frameId 0) | url | yes |
-| SESSION_DISARMED | onCommitted (result) / alarm `abandon` | outcome (`RESULT`/`ABANDONED`), url? | yes (RESULT only; ABANDONED has no tab) |
+| SESSION_DISARMED | onCommitted (result, any tab) / alarm `abandon` | outcome (`RESULT`/`ABANDONED`), url? | yes (RESULT only, from the tab that committed; ABANDONED has no tab) |
 | EXAM_NAV | onCommitted on exam tab | url, adopted? | no |
 | EXAM_TAB_CLOSED | tabs.onRemoved / TICK backstop | — | no |
 | TAB_SWITCH | tabs.onActivated | toTabId, toUrl, toTitle, toWindowId, incognito | yes |
 | TAB_RETURN | tabs.onActivated (exam tab) | awayMs | no |
-| PARALLEL_PAGE | onCommitted (other tab) / onActivated | url, title?, trigger (`committed`/`activated`), incognito | yes when trigger=`activated` |
+| PARALLEL_PAGE | onCommitted (other tab, or exam tab navigated off-site) / onActivated | url, title?, trigger (`committed`/`activated`), incognito | yes when trigger=`activated` |
 | WINDOW_MINIMIZED | windows.onFocusChanged→windows.get; TICK poll; CS visibility PROBE | — | no |
 | WINDOW_RESTORED | same | minimizedMs | no |
 | FOCUS_LEFT_CHROME | windows.onFocusChanged (WINDOW_ID_NONE); CS blur PROBE | — | yes (best effort) |

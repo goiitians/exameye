@@ -33,6 +33,14 @@ test('exam tab navigation emits EXAM_NAV only when the url changes', () => {
   assert.deepEqual(names(r), []);
 });
 
+test('exam tab navigating off-site emits EXAM_NAV and a committed PARALLEL_PAGE', () => {
+  const r = reduce(arm().session, nav(41, 'https://other.example.com/', T0 + 1000), cfg);
+  assert.deepEqual(names(r), ['EXAM_NAV', 'PARALLEL_PAGE']);
+  assert.equal(r.events[0].data.url, 'https://other.example.com/');
+  assert.deepEqual(r.events[1].data, { url: 'https://other.example.com/', trigger: 'committed', incognito: false });
+  assert.equal(r.session.state, 'ARMED');
+});
+
 test('result on the exam tab disarms with END effect carrying the session snapshot', () => {
   const armed = arm().session;
   const r = reduce(armed, nav(41, 'https://e.x/result/9', T0 + 5000), cfg);
@@ -43,11 +51,14 @@ test('result on the exam tab disarms with END effect carrying the session snapsh
   assert.equal(r.effects[0].session.id, armed.id);
 });
 
-test('result in another tab does not disarm; it is a parallel page', () => {
-  const r = reduce(arm().session, nav(77, 'https://e.x/result/9', T0 + 5000), cfg);
-  assert.equal(r.session.state, 'ARMED');
-  assert.deepEqual(names(r), ['PARALLEL_PAGE']);
-  assert.equal(r.events[0].data.trigger, 'committed');
+test('result in another tab disarms too, with ids from the tab that committed it', () => {
+  const r = reduce(arm().session, nav(77, 'https://e.x/result/9', T0 + 5000, 4), cfg);
+  assert.equal(r.session.state, 'IDLE');
+  assert.deepEqual(names(r), ['SESSION_DISARMED']);
+  assert.deepEqual(r.events[0].data, { outcome: 'RESULT', url: 'https://e.x/result/9' });
+  assert.equal(r.events[0].tabId, 77);
+  assert.equal(r.events[0].windowId, 4);
+  assert.equal(r.effects[0].type, 'END');
 });
 
 test('exam tab removed -> EXAM_TAB_CLOSED and abandon alarm; re-adoption by URL clears it', () => {
