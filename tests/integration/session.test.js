@@ -30,6 +30,13 @@ test('arm on start page, record a tab switch, disarm on result, files written', 
     await b.page.goto(`${site.origin}/exam/start.html?c=1`);
     await waitFor(async () => (await storage(b.worker, 'session')).session?.state === 'ARMED');
     const { session: armed } = await storage(b.worker, 'session');
+    // proves the content script's port-bearing match pattern actually registered on real
+    // Chromium (not just in the fake): a real right-click dispatches a real contextmenu event.
+    await b.page.click('h1', { button: 'right' });
+    await b.page.keyboard.press('Escape');
+    await waitFor(async () => ((await storage(b.worker, 'events')).events || []).some(e => e.name === 'CONTEXTMENU'));
+    const contextEvents = (await storage(b.worker, 'events')).events || [];
+    assert.ok(contextEvents.some(e => e.name === 'CONTEXTMENU'), 'expected a CONTEXTMENU event from the real right-click');
     // SESSION_ARMED already took a screenshot; sw.js coalesces any further shot within
     // SHOT_GAP_MS (2000ms) onto that same file, so wait it out to get a distinct TAB_SWITCH shot.
     await new Promise(r => setTimeout(r, 2100));
