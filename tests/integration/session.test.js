@@ -12,15 +12,18 @@ test('arm on start page, record a tab switch, disarm on result, files written', 
   const site = await startSite();
   const config = { startPrefix: `${site.origin}/exam/start.html`, examPrefix: '', resultPrefix: `${site.origin}/exam/result.html`, seat: 'T1', subfolder: 'ExamEyeTest', shotIntervalMin: 10, abandonMin: 10 };
   const b = await launch(config);
+  let collector;
   try {
     // chrome.downloads.search() is empty under Playwright's CDP download-behavior override, so
     // downloads are read back live via onCreated from an extension page instead (kept open for the run).
     const extId = new URL(b.worker.url()).host;
-    const collector = await b.context.newPage();
+    collector = await b.context.newPage();
     await collector.goto(`chrome-extension://${extId}/src/options/options.html`);
     await collector.evaluate(() => {
       window.__dl = [];
+      window.__dlc = [];
       chrome.downloads.onCreated.addListener((i) => window.__dl.push(i));
+      chrome.downloads.onChanged.addListener((d) => { if (d.state) window.__dlc.push({ id: d.id, state: d.state.current }); });
     });
     await b.page.bringToFront();
 
@@ -81,7 +84,18 @@ test('arm on start page, record a tab switch, disarm on result, files written', 
     const html = created.find(i => i.mime === 'text/html');
     assert.ok(html && decodeDataUrl(html.url), 'expected summary.html to have been written');
   } finally {
-    await b.close();
-    site.server.close();
+    // closing the context while an extension download is still in progress makes Chromium show
+    // a native "Download is in progress" quit dialog and keeps the window open.
+    try {
+      if (collector) {
+        await waitFor(() => collector.evaluate(() => {
+          const done = new Set(window.__dlc.filter(c => c.state === 'complete' || c.state === 'interrupted').map(c => c.id));
+          return window.__dl.every(i => i.state === 'complete' || done.has(i.id));
+        }));
+      }
+    } finally {
+      await b.close();
+      site.server.close();
+    }
   }
 });
