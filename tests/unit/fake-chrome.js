@@ -3,6 +3,8 @@ function evt() {
   return { addListener: (f) => ls.push(f), emit: async (...a) => { for (const f of ls) await f(...a); } };
 }
 
+const yieldTick = () => new Promise((r) => setTimeout(r, 0));
+
 export function installFakeChrome() {
   const store = {};
   const c = {
@@ -10,12 +12,14 @@ export function installFakeChrome() {
     storage: {
       local: {
         async get(keys) {
+          await yieldTick();
           const ks = keys == null ? Object.keys(store) : [].concat(keys);
           const o = {};
           for (const k of ks) if (k in store) o[k] = structuredClone(store[k]);
           return o;
         },
         async set(obj) {
+          await yieldTick();
           const changes = {};
           for (const [k, v] of Object.entries(obj)) { changes[k] = { oldValue: store[k], newValue: structuredClone(v) }; store[k] = structuredClone(v); }
           await c.storage.onChanged.emit(changes, 'local');

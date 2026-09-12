@@ -62,10 +62,45 @@ test('probe dispatches FOCUS and WINDOW_STATE for the exam window', async () => 
 test('concurrent applyConfig and dispatch leave both meta fields intact', async () => {
   const before = await get('meta');
   const at = before.meta.lastSeenAt + 1000;
-  await Promise.all([
-    sw.applyConfig(),
-    sw.dispatch({ kind: 'NAV', tabId: 2, windowId: 3, url: 'https://e.x/q/2', at }),
+  // Prime a sentinel that only applyConfig's own write clears, so a lost update is
+  // observable: if dispatch's write wins with a snapshot taken before applyConfig's
+  // write landed, the sentinel survives instead of being replaced by `[]`.
+  await chrome.storage.local.set({ meta: { ...before.meta, configErrors: ['STALE_SENTINEL'] } });
+
+  // Force a genuine read(meta)->read(meta)->write->write interleave between the two
+  // callers' patchMeta calls, instead of relying on incidental timing: hold the first
+  // single-key `meta` write open until the second single-key `meta` read has happened
+  // (both callers have then read the pre-race value before either writes back). If the
+  // second read never comes (the fixed code fully serialises the two callers, so there
+  // is no concurrency to interleave), the hold releases on its own after a short delay
+  // instead of deadlocking.
+  const realGet = chrome.storage.local.get.bind(chrome.storage.local);
+  const realSet = chrome.storage.local.set.bind(chrome.storage.local);
+  let metaGets = 0;
+  let releaseFirstMetaSet;
+  const secondMetaGetSeen = Promise.race([
+    new Promise((resolve) => { releaseFirstMetaSet = resolve; }),
+    new Promise((resolve) => setTimeout(resolve, 30)),
   ]);
+  chrome.storage.local.get = async (keys) => {
+    const result = await realGet(keys);
+    if (keys === 'meta' && ++metaGets === 2) releaseFirstMetaSet();
+    return result;
+  };
+  let metaSets = 0;
+  chrome.storage.local.set = async (obj) => {
+    if ('meta' in obj && Object.keys(obj).length === 1 && ++metaSets === 1) await secondMetaGetSeen;
+    return realSet(obj);
+  };
+  try {
+    await Promise.all([
+      sw.applyConfig(),
+      sw.dispatch({ kind: 'NAV', tabId: 2, windowId: 3, url: 'https://e.x/q/2', at }),
+    ]);
+  } finally {
+    chrome.storage.local.get = realGet;
+    chrome.storage.local.set = realSet;
+  }
   const { meta } = await get('meta');
   assert.deepEqual(meta.configErrors, []);
   assert.equal(meta.lastSeenAt, at);
