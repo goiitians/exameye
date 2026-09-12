@@ -84,4 +84,62 @@ const HANDLERS = {
   },
 };
 
+function windowState(s, windowId, state, at, emit) {
+  if (windowId !== s.examWindowId) return;
+  const ids = { windowId, at };
+  if (state === 'minimized' && s.away.minAt === null) { s.away.minAt = at; emit('WINDOW_MINIMIZED', {}, ids); }
+  if (state !== 'minimized' && s.away.minAt !== null) { emit('WINDOW_RESTORED', { minimizedMs: at - s.away.minAt }, ids); s.away.minAt = null; }
+  if (s.windowState === 'fullscreen' && state !== 'fullscreen') emit('FULLSCREEN_EXIT', { source: 'window' }, ids);
+  s.windowState = state;
+}
+
+const CS_DIRECT = new Set(['COPY', 'CUT', 'PASTE', 'CONTEXTMENU', 'PRINT']);
+const CS_PROBE = new Set(['VISIBILITY', 'BLUR', 'FOCUS']);
+
+Object.assign(HANDLERS, {
+  TAB_ACTIVATED(s, input, cfg, emit) {
+    if (input.tabId === s.examTabId) {
+      if (s.away.tabAt !== null) { emit('TAB_RETURN', { awayMs: input.at - s.away.tabAt }); s.away.tabAt = null; }
+      return;
+    }
+    const incognito = Boolean(input.incognito);
+    if (s.away.tabAt === null) {
+      s.away.tabAt = input.at;
+      emit('TAB_SWITCH', { toTabId: input.tabId, toUrl: input.url, toTitle: input.title, toWindowId: input.windowId, incognito });
+    }
+    emit('PARALLEL_PAGE', { url: input.url, title: input.title, incognito, trigger: 'activated' });
+  },
+  FOCUS(s, input, cfg, emit) {
+    if (input.windowId === -1) {
+      if (s.away.focusAt === null) { s.away.focusAt = input.at; emit('FOCUS_LEFT_CHROME'); }
+    } else if (s.away.focusAt !== null) {
+      emit('FOCUS_RETURNED', { awayMs: input.at - s.away.focusAt }); s.away.focusAt = null;
+    }
+  },
+  WINDOW_STATE(s, input, cfg, emit) { windowState(s, input.windowId, input.state, input.at, emit); },
+  WINDOW_CREATED(s, input, cfg, emit) { emit(input.incognito ? 'INCOGNITO_WINDOW_OPENED' : 'WINDOW_OPENED', { windowId: input.windowId }); },
+  WINDOW_REMOVED(s, input, cfg, emit) { emit('WINDOW_CLOSED', { windowId: input.windowId }); },
+  CS(s, input, cfg, emit, out) {
+    if (input.tabId !== s.examTabId) return;
+    const data = input.data || {};
+    if (CS_DIRECT.has(input.name)) emit(input.name, data);
+    else if (input.name === 'FULLSCREEN_EXIT') emit('FULLSCREEN_EXIT', { source: 'document' });
+    else if (input.name === 'DEVTOOLS') emit('DEVTOOLS_OPENED', data);
+    else if (CS_PROBE.has(input.name)) out.effects.push({ type: 'PROBE' });
+  },
+  IDLE(s, input, cfg, emit) {
+    if (input.state !== 'active') {
+      if (s.away.idleAt === null) { s.away.idleAt = input.at; emit('IDLE_START', { state: input.state }); }
+    } else if (s.away.idleAt !== null) {
+      emit('IDLE_END', { idleMs: input.at - s.away.idleAt }); s.away.idleAt = null;
+    }
+  },
+  DOWNLOAD(s, input, cfg, emit) { emit('DOWNLOAD_STARTED', { url: input.url, filename: input.filename, mime: input.mime }); },
+  TICK(s, input, cfg, emit, out) {
+    const w = input.windows.find(w => w.id === s.examWindowId);
+    if (w) windowState(s, w.id, w.state, input.at, emit);
+    if (!input.examTabPresent) HANDLERS.TAB_REMOVED(s, { ...input, tabId: s.examTabId }, cfg, emit, out);
+  },
+});
+
 export { HANDLERS };
