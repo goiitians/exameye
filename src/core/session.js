@@ -2,7 +2,7 @@ import { classify } from './urlmatch.js';
 import { sessionId } from './ids.js';
 import { makeEvent } from './events.js';
 
-const freshAway = () => ({ tabAt: null, focusAt: null, minAt: null, idleAt: null, idleState: null });
+const freshAway = () => ({ tabAt: null, tabId: null, tabUrl: null, focusAt: null, minAt: null, idleAt: null, idleState: null });
 
 export function initial() {
   return { state: 'IDLE' };
@@ -105,14 +105,17 @@ const CS_PROBE = new Set(['VISIBILITY', 'BLUR', 'FOCUS']);
 Object.assign(HANDLERS, {
   TAB_ACTIVATED(s, input, cfg, emit) {
     if (input.tabId === s.examTabId) {
-      if (s.away.tabAt !== null) { emit('TAB_RETURN', { awayMs: input.at - s.away.tabAt }); s.away.tabAt = null; }
+      if (s.away.tabAt !== null) { emit('TAB_RETURN', { awayMs: input.at - s.away.tabAt }); s.away.tabAt = null; s.away.tabId = null; s.away.tabUrl = null; }
       return;
     }
     const incognito = Boolean(input.incognito);
     if (s.away.tabAt === null) {
       s.away.tabAt = input.at;
       emit('TAB_SWITCH', { toTabId: input.tabId, toUrl: input.url, toTitle: input.title, toWindowId: input.windowId, incognito });
+    } else if (s.away.tabId === input.tabId && s.away.tabUrl === input.url) {
+      return; // windows.onFocusChanged's synthetic activation of the tab tabs.onActivated already reported
     }
+    s.away.tabId = input.tabId; s.away.tabUrl = input.url;
     emit('PARALLEL_PAGE', { url: input.url, title: input.title, incognito, trigger: 'activated' });
   },
   FOCUS(s, input, cfg, emit) {

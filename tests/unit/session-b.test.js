@@ -22,6 +22,21 @@ test('tab switch away, another parallel activation, then return with awayMs', ()
   assert.equal(r.session.away.tabAt, null);
 });
 
+test('re-activating the same parallel tab (windows.onFocusChanged + tabs.onActivated both firing) counts one PARALLEL_PAGE', () => {
+  let r = reduce(armed(), act(42, T0 + 1000), cfg);
+  assert.deepEqual(names(r), ['TAB_SWITCH', 'PARALLEL_PAGE']);
+  r = reduce(r.session, act(42, T0 + 1005), cfg);
+  assert.deepEqual(names(r), []);
+  r = reduce(r.session, act(42, T0 + 3000, { url: 'https://g.x/other' }), cfg);
+  assert.deepEqual(names(r), ['PARALLEL_PAGE']);
+  r = reduce(r.session, act(43, T0 + 4000), cfg);
+  assert.deepEqual(names(r), ['PARALLEL_PAGE']);
+  r = reduce(r.session, act(41, T0 + 5000), cfg);
+  assert.deepEqual(names(r), ['TAB_RETURN']);
+  r = reduce(r.session, act(42, T0 + 6000), cfg);
+  assert.deepEqual(names(r), ['TAB_SWITCH', 'PARALLEL_PAGE']);
+});
+
 test('focus left/returned pair with duration, no duplicates', () => {
   let r = reduce(armed(), { kind: 'FOCUS', windowId: -1, at: T0 }, cfg);
   assert.deepEqual(names(r), ['FOCUS_LEFT_CHROME']);
