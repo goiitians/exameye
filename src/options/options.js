@@ -24,7 +24,7 @@ form.addEventListener('submit', async (e) => {
   await chrome.storage.local.set({ config: cfg });
   status.textContent = 'Saved.';
   status.className = 'ok';
-  showDest(cfg);
+  await load();
 });
 
 load();
