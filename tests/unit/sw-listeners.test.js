@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { installFakeChrome } from './fake-chrome.js';
 
 const chrome = installFakeChrome();
-const config = { startPrefix: 'https://e.x/start', examPrefix: '', resultPrefix: 'https://e.x/result', seat: 'A17', subfolder: 'ExamEye', shotIntervalMin: 10, abandonMin: 10 };
+const config = { startPrefix: 'https://e.x/start', examPrefix: '', resultPrefix: 'https://e.x/result', seat: 'A17', subfolder: 'ExamEye', shotIntervalMin: 10, abandonMin: 10, startButton: '', endButton: '', endMarker: '', maxMin: 0, tailMin: 0 };
 await chrome.storage.local.set({ config });
 const sw = await import('../../src/sw.js');
 chrome.tabs.list = [
@@ -110,4 +110,58 @@ test('window focus returning to the exam tab window closes the tab-away episode'
   await sw.settled();
   assert.ok((await names()).includes('TAB_RETURN'), 'expected TAB_RETURN from the synthetic TAB_ACTIVATED on focus return');
   assert.equal((await get('session')).session.away.tabAt, null);
+});
+
+test('onHistoryStateUpdated and onReferenceFragmentUpdated dispatch NAV like onCommitted', async () => {
+  chrome.tabs.list = [{ id: 44, windowId: 9, url: 'https://e.x/q/7', title: 'Exam', incognito: false, active: true }];
+  await chrome.webNavigation.onHistoryStateUpdated.emit({ tabId: 44, frameId: 0, url: 'https://e.x/q/2' });
+  await sw.settled();
+  assert.equal((await names()).at(-1), 'EXAM_NAV');
+  assert.equal((await get('events')).events.at(-1).data.url, 'https://e.x/q/2');
+  await chrome.webNavigation.onReferenceFragmentUpdated.emit({ tabId: 44, frameId: 0, url: 'https://e.x/q/3' });
+  await sw.settled();
+  assert.equal((await names()).at(-1), 'EXAM_NAV');
+  assert.equal((await get('events')).events.at(-1).data.url, 'https://e.x/q/3');
+  const before = (await names()).length;
+  await chrome.webNavigation.onHistoryStateUpdated.emit({ tabId: 44, frameId: 7, url: 'https://e.x/q/4' });
+  await sw.settled();
+  assert.equal((await names()).length, before, 'frameId 7 must be ignored');
+});
+
+test('onMessage passes sender.url into the CS input', async () => {
+  await chrome.webNavigation.onCommitted.emit({ tabId: 44, frameId: 0, url: 'https://e.x/result' });
+  await sw.settled();
+  assert.equal((await get('session')).session.state, 'IDLE');
+  await chrome.storage.local.set({ config: { ...config, startButton: 'Start' } });
+  await chrome.runtime.onMessage.emit({ type: 'cs', name: 'START_CLICK', data: { label: 'start' } }, { tab: { id: 1, windowId: 3 }, url: 'https://e.x/start' });
+  await sw.settled();
+  const { session } = await get('session');
+  assert.equal(session.state, 'ARMED');
+  assert.equal((await get('events')).events.at(-1).data.trigger, 'button');
+  await chrome.storage.local.set({ config });
+});
+
+test('max and closing alarms dispatch MAX_TIMER and CLOSING_TIMER', async () => {
+  await chrome.webNavigation.onCommitted.emit({ tabId: 1, frameId: 0, url: 'https://e.x/result' });
+  await sw.settled();
+  assert.equal((await get('session')).session.state, 'IDLE');
+  await chrome.storage.local.set({ config: { ...config, maxMin: 1, tailMin: 1, endButton: 'Finish' } });
+  chrome.tabs.list = [{ id: 50, windowId: 3, url: 'https://e.x/start', title: 'Exam', incognito: false, active: true }];
+  await chrome.webNavigation.onCommitted.emit({ tabId: 50, frameId: 0, url: 'https://e.x/start' });
+  await sw.settled();
+  const { session: armed } = await get('session');
+  assert.equal(armed.state, 'ARMED');
+  assert.equal(chrome.alarms.alarms.max.when, armed.startedAt + 60000);
+  await chrome.alarms.onAlarm.emit({ name: 'max' });
+  await sw.settled();
+  const { session: closing } = await get('session');
+  assert.equal(closing.state, 'CLOSING');
+  assert.equal(closing.outcome, 'TIMED_OUT');
+  assert.equal(chrome.alarms.alarms.closing.when, closing.closingUntil);
+  await chrome.alarms.onAlarm.emit({ name: 'closing' });
+  await sw.settled();
+  assert.equal((await get('session')).session.state, 'IDLE');
+  const summary = chrome.downloads.calls.filter(c => c.filename.endsWith('summary.txt')).at(-1);
+  assert.match(Buffer.from(summary.url.split(',')[1], 'base64').toString('utf8'), /Outcome: TIMED_OUT/);
+  await chrome.storage.local.set({ config });
 });

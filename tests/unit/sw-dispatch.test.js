@@ -4,7 +4,7 @@ import { installFakeChrome } from './fake-chrome.js';
 import { verify } from '../../src/core/hashchain.js';
 
 const chrome = installFakeChrome();
-const config = { startPrefix: 'https://e.x/start', examPrefix: '', resultPrefix: 'https://e.x/result', seat: 'A17', subfolder: 'ExamEye', shotIntervalMin: 10, abandonMin: 10 };
+const config = { startPrefix: 'https://e.x/start', examPrefix: '', resultPrefix: 'https://e.x/result', seat: 'A17', subfolder: 'ExamEye', shotIntervalMin: 10, abandonMin: 10, startButton: '', endButton: '', endMarker: '', maxMin: 0, tailMin: 0 };
 const sw = await import('../../src/sw.js');
 const get = (k) => chrome.storage.local.get(k);
 
@@ -104,4 +104,36 @@ test('concurrent applyConfig and dispatch leave both meta fields intact', async 
   const { meta } = await get('meta');
   assert.deepEqual(meta.configErrors, []);
   assert.equal(meta.lastSeenAt, at);
+});
+
+test('effects create and clear the max and closing alarms', async () => {
+  await sw.dispatch({ kind: 'NAV', tabId: 2, windowId: 3, url: 'https://e.x/result', at: 300000 });
+  assert.equal((await get('session')).session.state, 'IDLE');
+  await chrome.storage.local.set({ config: { ...config, maxMin: 1, tailMin: 1, endButton: 'Finish' } });
+  await sw.dispatch({ kind: 'NAV', tabId: 3, windowId: 3, url: 'https://e.x/start', at: 400000 });
+  const { session: armed } = await get('session');
+  assert.equal(chrome.alarms.alarms.max.when, armed.startedAt + 60000);
+  await sw.dispatch({ kind: 'CS', name: 'END_CLICK', tabId: 3, windowId: 3, data: { label: 'finish' }, at: 400500 });
+  assert.equal(chrome.alarms.alarms.max, undefined);
+  const { session: closing } = await get('session');
+  assert.equal(closing.state, 'CLOSING');
+  assert.equal(chrome.alarms.alarms.closing.when, closing.closingUntil);
+});
+
+test('GAP is emitted in CLOSING too', async () => {
+  const { meta } = await get('meta');
+  const at = meta.lastSeenAt;
+  await chrome.storage.local.set({ meta: { ...meta, lastSeenAt: at - 100000 } });
+  await sw.dispatch({ kind: 'TICK', at, windows: [{ id: 3, state: 'normal' }], examTabPresent: true });
+  const gap = (await get('events')).events.at(-1);
+  assert.equal(gap.name, 'EXTENSION_GAP');
+  assert.equal(gap.data.phase, 'tail');
+});
+
+test('log base uses the session id while CLOSING', async () => {
+  const { session } = await get('session');
+  assert.equal(session.state, 'CLOSING');
+  const call = chrome.downloads.calls.filter(c => c.filename.endsWith('/log.txt')).at(-1);
+  assert.ok(call.filename.includes(session.id), call.filename);
+  await chrome.storage.local.set({ config });
 });

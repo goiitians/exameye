@@ -43,7 +43,7 @@ export function installFakeChrome() {
       async getLastFocused() { return c.windows.list.find(w => w.focused) || c.windows.list[0] || { id: -1, focused: false }; },
       onFocusChanged: evt(), onCreated: evt(), onRemoved: evt(),
     },
-    webNavigation: { onCommitted: evt() },
+    webNavigation: { onCommitted: evt(), onHistoryStateUpdated: evt(), onReferenceFragmentUpdated: evt() },
     idle: { async setDetectionInterval() {}, onStateChanged: evt() },
     downloads: {
       calls: [], items: [], erased: [], nextId: 1, failWhen: null, interruptWhen: null, uiOptions: null,

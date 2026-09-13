@@ -21,7 +21,7 @@ const GAP_MS = 90000;
 const SHOT_GAP_MS = 2000;
 const PAINT_WAIT_MS = 1500;
 // arm/disarm fire at onCommitted, before the new page has painted; without a wait the shot shows the previous page
-const NAV_BORN = new Set(['SESSION_ARMED', 'SESSION_DISARMED']);
+const NAV_BORN = new Set(['SESSION_ARMED', 'SESSION_DISARMED', 'RESULT_PAGE']);
 const now = () => Date.now();
 
 let queue = Promise.resolve();
@@ -64,7 +64,7 @@ async function dispatchNow(input) {
   let { events = [], lines = [], lastHash = GENESIS } = st;
   const meta = st.meta || {};
   const newEvents = [];
-  if (session.state === 'ARMED' && meta.lastSeenAt && input.at - meta.lastSeenAt > GAP_MS) {
+  if (session.state !== 'IDLE' && meta.lastSeenAt && input.at - meta.lastSeenAt > GAP_MS) {
     const g = reduce(session, { kind: 'GAP', at: input.at, lastSeenAt: meta.lastSeenAt, reason: input.kind === 'STARTUP' ? 'browser-restart' : 'sw-restart' }, cfg);
     session = g.session;
     newEvents.push(...g.events);
@@ -85,7 +85,7 @@ async function dispatchNow(input) {
     events.push(ev);
   }
   if (newEvents.length) {
-    const base = `${cfg.subfolder}/${(r.session.state === 'ARMED' ? r.session : session).id}`;
+    const base = `${cfg.subfolder}/${(r.session.state !== 'IDLE' ? r.session : session).id}`;
     let { pending = {} } = await store.get('pending');
     pending = putText(pending, `${base}/log.txt`, 'text/plain', lines.join('\n') + '\n');
     for (const s of added) pending = putBase64(pending, `${base}/${s.file}`, 'image/jpeg', s.b64);
@@ -113,6 +113,10 @@ async function runEffects(effects, cfg, pendingEnd) {
   for (const e of effects) {
     if (e.type === 'ABANDON_ALARM_SET') await alarms.setAt('abandon', e.when);
     else if (e.type === 'ABANDON_ALARM_CLEAR') await alarms.clear('abandon');
+    else if (e.type === 'MAX_ALARM_SET') await alarms.setAt('max', e.when);
+    else if (e.type === 'MAX_ALARM_CLEAR') await alarms.clear('max');
+    else if (e.type === 'CLOSING_ALARM_SET') await alarms.setAt('closing', e.when);
+    else if (e.type === 'CLOSING_ALARM_CLEAR') await alarms.clear('closing');
     else if (e.type === 'PROBE') setTimeout(probe, 0);
     else if (e.type === 'END') await endSession(pendingEnd, cfg);
   }
@@ -203,7 +207,7 @@ export async function tick() {
   await finishPendingEnd();
   const { session } = await store.get('session');
   const windows = (await getAllWindows()).map(w => ({ id: w.id, state: w.state }));
-  const examTabPresent = session?.state === 'ARMED' && (await getTab(session.examTabId)) !== null;
+  const examTabPresent = session && session.state !== 'IDLE' && (await getTab(session.examTabId)) !== null;
   await dispatch({ kind: 'TICK', at: now(), windows, examTabPresent });
   await flush();
 }
@@ -216,7 +220,7 @@ export function recover() {
     await finishPendingEndNow();
     const cfg = await loadConfig();
     const { session } = await store.get('session');
-    if (!cfg || session?.state !== 'ARMED') return;
+    if (!cfg || !session || session.state === 'IDLE') return;
     const examTabs = (await queryAllTabs()).filter(t => classify(t.url, cfg)).map(t => ({ tabId: t.id, windowId: t.windowId, url: t.url }));
     await dispatchNow({ kind: 'STARTUP', at: now(), examTabs });
   });
@@ -224,7 +228,7 @@ export function recover() {
 
 async function probeWindow() {
   const { session } = await store.get('session');
-  if (session?.state !== 'ARMED') return;
+  if (!session || session.state === 'IDLE') return;
   const w = await getWindow(session.examWindowId);
   if (w) await dispatch({ kind: 'WINDOW_STATE', windowId: w.id, state: w.state, at: now() });
 }
@@ -251,11 +255,14 @@ eraseOwnCompleted();
 chrome.runtime.onInstalled.addListener(boot);
 chrome.runtime.onStartup.addListener(() => { recover(); return boot(); });
 chrome.storage.onChanged.addListener((changes) => { if (changes.config) applyConfig(); });
-chrome.webNavigation.onCommitted.addListener(async (d) => {
+async function onNav(d) {
   if (d.frameId !== 0) return;
   const tab = await getTab(d.tabId);
   dispatch({ kind: 'NAV', tabId: d.tabId, windowId: tab?.windowId ?? -1, url: d.url, incognito: Boolean(tab?.incognito), at: now() });
-});
+}
+chrome.webNavigation.onCommitted.addListener(onNav);
+chrome.webNavigation.onHistoryStateUpdated.addListener(onNav);
+chrome.webNavigation.onReferenceFragmentUpdated.addListener(onNav);
 chrome.tabs.onActivated.addListener(async ({ tabId, windowId }) => {
   const tab = await getTab(tabId);
   dispatch({ kind: 'TAB_ACTIVATED', tabId, windowId, url: tab?.pendingUrl || tab?.url || '', title: tab?.title || '', incognito: Boolean(tab?.incognito), at: now() });
@@ -277,10 +284,12 @@ chrome.downloads.onCreated.addListener((item) => {
 });
 chrome.runtime.onMessage.addListener((msg, sender) => {
   if (msg?.type !== 'cs' || !sender.tab) return;
-  dispatch({ kind: 'CS', name: msg.name, data: msg.data, tabId: sender.tab.id, windowId: sender.tab.windowId, at: now() });
+  dispatch({ kind: 'CS', name: msg.name, data: msg.data, tabId: sender.tab.id, windowId: sender.tab.windowId, url: sender.url, at: now() });
 });
 chrome.alarms.onAlarm.addListener(async (a) => {
   if (a.name === 'tick') await tick();
   else if (a.name === 'periodic') dispatch({ kind: 'PERIODIC', at: now() });
   else if (a.name === 'abandon') dispatch({ kind: 'ABANDON_TIMER', at: now() });
+  else if (a.name === 'max') dispatch({ kind: 'MAX_TIMER', at: now() });
+  else if (a.name === 'closing') dispatch({ kind: 'CLOSING_TIMER', at: now() });
 });
