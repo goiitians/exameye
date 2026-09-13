@@ -129,10 +129,11 @@ const HANDLERS = {
     if (t) {
       Object.assign(s, { examTabId: t.tabId, examWindowId: t.windowId, examUrl: t.url, tabLostAt: null, away: freshAway() });
       out.effects.push({ type: 'ABANDON_ALARM_CLEAR' });
-      return;
+    } else {
+      s.tabLostAt ??= input.at;
+      out.effects.push({ type: 'ABANDON_ALARM_SET', when: s.tabLostAt + cfg.abandonMin * 60000 });
     }
-    s.tabLostAt ??= input.at;
-    out.effects.push({ type: 'ABANDON_ALARM_SET', when: s.tabLostAt + cfg.abandonMin * 60000 });
+    if (s.maxAt !== null) out.effects.push({ type: 'MAX_ALARM_SET', when: s.maxAt });
   },
   GAP(s, input, cfg, emit) {
     emit('EXTENSION_GAP', { lastSeenAt: input.lastSeenAt, gapMs: input.at - input.lastSeenAt, reason: input.reason }, input);

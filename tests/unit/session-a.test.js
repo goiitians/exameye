@@ -128,6 +128,15 @@ test('NAV arming still works with startButton blank and carries trigger nav', ()
   assert.equal(r.events[0].data.trigger, 'nav');
 });
 
+test('STARTUP in ARMED re-sets the max alarm so the backstop survives a browser restart', () => {
+  const maxCfg = { ...cfg, maxMin: 180 };
+  const armed = reduce(initial(), { kind: 'NAV', tabId: 41, windowId: 3, url: 'https://e.x/start', at: T0 }, maxCfg).session;
+  let r = reduce(armed, { kind: 'STARTUP', at: T0 + 5000, examTabs: [{ tabId: 9, windowId: 2, url: 'https://e.x/q/1' }] }, maxCfg);
+  assert.deepEqual(r.effects, [{ type: 'ABANDON_ALARM_CLEAR' }, { type: 'MAX_ALARM_SET', when: armed.maxAt }]);
+  r = reduce(armed, { kind: 'STARTUP', at: T0 + 5000, examTabs: [] }, maxCfg);
+  assert.deepEqual(r.effects, [{ type: 'ABANDON_ALARM_SET', when: T0 + 5000 + 600000 }, { type: 'MAX_ALARM_SET', when: armed.maxAt }]);
+});
+
 test('arming sets maxAt and MAX_ALARM_SET when maxMin > 0', () => {
   const maxCfg = { ...cfg, maxMin: 180 };
   const r = reduce(initial(), nav(41, 'https://e.x/start?c=1'), maxCfg);

@@ -93,6 +93,16 @@ test('END_MARKER is sent once when the marker text appears', (t) => {
   assert.equal(sent.filter(m => m.name === 'END_MARKER').length, 1);
 });
 
+test('a submitted screen already on the page is reported once the config arrives', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  setConfig({ endMarker: '' });
+  document.body.innerText = 'Your answers have been submitted.';
+  const before = sent.filter(m => m.name === 'END_MARKER').length;
+  setConfig({ endMarker: 'Your answers have been submitted' });
+  t.mock.timers.tick(1000);
+  assert.equal(sent.filter(m => m.name === 'END_MARKER').length, before + 1);
+});
+
 test('config arrives from storage.local.get at load', () => {
   assert.deepEqual(storageGetCalls, ['config']);
 });

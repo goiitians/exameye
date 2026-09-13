@@ -40,6 +40,7 @@
     endLabels = parseList(cfg?.endButton);
     marker = norm(cfg?.endMarker);
     markerSent = false;
+    scheduleChange();
   };
   chrome.storage.local.get('config').then(({ config }) => applyConfig(config));
   chrome.storage.onChanged.addListener((c, area) => { if (area === 'local' && c.config) applyConfig(c.config.newValue); });
@@ -54,7 +55,7 @@
   }, true);
 
   let changeTimer = null;
-  const scheduleChange = () => {
+  function scheduleChange() {
     clearTimeout(changeTimer);
     changeTimer = setTimeout(() => {
       send('SCREEN_CHANGED', {});
@@ -63,6 +64,6 @@
         markerSent = true;
       }
     }, 1000);
-  };
+  }
   new MutationObserver(scheduleChange).observe(document.documentElement, { childList: true, characterData: true, subtree: true });
 })();
