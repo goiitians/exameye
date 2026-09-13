@@ -138,6 +138,7 @@ test('TICK with missing exam tab emits EXAM_TAB_CLOSED carrying tabId', () => {
 const tailCfg = { ...cfg, tailMin: 5, endButton: 'Finish', endMarker: 'submitted', maxMin: 60 };
 const armCs = (tabId = 41, url) => reduce(initial(), { kind: 'NAV', tabId, windowId: 3, url: url ?? 'https://e.x/start', at: T0 }, tailCfg).session;
 const cs = (name, data, tabId = 41, at = T0 + 1000) => ({ kind: 'CS', name, data, tabId, windowId: 3, at });
+const closingSession = () => reduce(armCs(), cs('END_CLICK', { label: 'finish' }), tailCfg).session;
 
 test('END_CLICK on the exam tab logs END_BUTTON_CLICKED and enters CLOSING as SUBMITTED', () => {
   const r = reduce(armCs(), cs('END_CLICK', { label: 'finish' }), tailCfg);
@@ -223,4 +224,106 @@ test('ABANDON_TIMER disarm carries trigger abandon and clears the max alarm', ()
   assert.deepEqual(r.events[0].data, { outcome: 'ABANDONED', trigger: 'abandon' });
   assert.deepEqual(r.effects, [{ type: 'MAX_ALARM_CLEAR' }, { type: 'END', outcome: 'ABANDONED', session: r.effects[1].session }]);
   assert.equal(r.session.state, 'IDLE');
+});
+
+test('events in CLOSING carry phase tail and normal monitoring continues', () => {
+  const closing = closingSession();
+  let r = reduce(closing, { kind: 'TAB_ACTIVATED', tabId: 99, windowId: 3, url: 'https://g.x/', title: 'G', incognito: false, at: T0 + 2000 }, tailCfg);
+  assert.deepEqual(names(r), ['TAB_SWITCH', 'PARALLEL_PAGE']);
+  assert.equal(r.events[0].data.phase, 'tail');
+  assert.equal(r.events[0].data.toUrl, 'https://g.x/');
+  r = reduce(closing, cs('COPY', { len: 5 }), tailCfg);
+  assert.deepEqual(names(r), ['COPY']);
+  assert.equal(r.events[0].data.phase, 'tail');
+});
+
+test('END_CLICK in CLOSING resets closingUntil and re-sets the alarm; outcome unchanged', () => {
+  const closing = closingSession();
+  const r = reduce(closing, cs('END_CLICK', { label: 'finish' }, 41, T0 + 5000), tailCfg);
+  assert.deepEqual(names(r), ['END_BUTTON_CLICKED']);
+  assert.equal(r.session.state, 'CLOSING');
+  assert.equal(r.session.outcome, 'SUBMITTED');
+  assert.equal(r.session.closingUntil, T0 + 5000 + 300000);
+  assert.deepEqual(r.effects, [{ type: 'CLOSING_ALARM_SET', when: T0 + 5000 + 300000 }]);
+});
+
+test('START_CLICK in CLOSING is logged only', () => {
+  const closing = closingSession();
+  const r = reduce(closing, cs('START_CLICK', { label: 'start' }), tailCfg);
+  assert.deepEqual(names(r), ['START_BUTTON_CLICKED']);
+  assert.equal(r.session.state, 'CLOSING');
+});
+
+test('SCREEN_CHANGED is ignored in ARMED and logged with hash in CLOSING', () => {
+  let r = reduce(armCs(), cs('SCREEN_CHANGED', { hash: 'abcd1234' }), tailCfg);
+  assert.deepEqual(r.events, []);
+  const closing = closingSession();
+  r = reduce(closing, cs('SCREEN_CHANGED', { hash: 'abcd1234' }), tailCfg);
+  assert.deepEqual(names(r), ['SCREEN_CHANGED']);
+  assert.deepEqual(r.events[0].data, { phase: 'tail', hash: 'abcd1234' });
+});
+
+test('result NAV in CLOSING is just EXAM_NAV; other-tab result is PARALLEL_PAGE', () => {
+  const closing = closingSession();
+  let r = reduce(closing, { kind: 'NAV', tabId: 41, windowId: 3, url: 'https://e.x/result/1', at: T0 + 2000 }, tailCfg);
+  assert.deepEqual(names(r), ['EXAM_NAV']);
+  r = reduce(closing, { kind: 'NAV', tabId: 77, windowId: 4, url: 'https://e.x/result/1', at: T0 + 2000 }, tailCfg);
+  assert.deepEqual(names(r), ['PARALLEL_PAGE']);
+  assert.equal(r.events[0].data.trigger, 'committed');
+});
+
+test('exam tab removed in CLOSING ends immediately', () => {
+  const closing = closingSession();
+  let r = reduce(closing, { kind: 'TAB_REMOVED', tabId: 41, at: T0 + 2000 }, tailCfg);
+  assert.deepEqual(names(r), ['EXAM_TAB_CLOSED', 'SESSION_DISARMED']);
+  assert.deepEqual(r.events[1].data, { phase: 'tail', outcome: 'SUBMITTED', trigger: 'button', label: 'finish' });
+  assert.deepEqual(r.effects.map(e => e.type), ['CLOSING_ALARM_CLEAR', 'MAX_ALARM_CLEAR', 'END']);
+  assert.equal(r.session.state, 'IDLE');
+  assert.ok(!r.effects.some(e => e.type === 'ABANDON_ALARM_SET'));
+
+  r = reduce(closing, { kind: 'TICK', at: T0 + 2000, windows: [{ id: 3, state: 'normal' }], examTabPresent: false }, tailCfg);
+  assert.deepEqual(names(r), ['EXAM_TAB_CLOSED', 'SESSION_DISARMED']);
+  assert.equal(r.session.state, 'IDLE');
+});
+
+test('CLOSING_TIMER disarms with the stored outcome from the exam window', () => {
+  const closing = closingSession();
+  const r = reduce(closing, { kind: 'CLOSING_TIMER', at: closing.closingUntil }, tailCfg);
+  assert.deepEqual(names(r), ['SESSION_DISARMED']);
+  assert.equal(r.events[0].tabId, closing.examTabId);
+  assert.equal(r.events[0].windowId, closing.examWindowId);
+  assert.equal(r.session.state, 'IDLE');
+});
+
+test('STARTUP in CLOSING re-adopts the tab and re-sets the closing alarm', () => {
+  const closing = closingSession();
+  const r = reduce(closing, { kind: 'STARTUP', at: closing.closingUntil - 1000, examTabs: [{ tabId: 9, windowId: 2, url: 'https://e.x/submitted' }] }, tailCfg);
+  assert.deepEqual(r.events, []);
+  assert.equal(r.session.examTabId, 9);
+  assert.deepEqual(r.effects, [{ type: 'CLOSING_ALARM_SET', when: closing.closingUntil }]);
+  assert.equal(r.session.state, 'CLOSING');
+});
+
+test('STARTUP in CLOSING after closingUntil ends now', () => {
+  const closing = closingSession();
+  const r = reduce(closing, { kind: 'STARTUP', at: closing.closingUntil + 1000, examTabs: [{ tabId: 9, windowId: 2, url: 'https://e.x/submitted' }] }, tailCfg);
+  assert.deepEqual(names(r), ['SESSION_DISARMED']);
+  assert.equal(r.session.state, 'IDLE');
+});
+
+test('STARTUP in CLOSING with no tab ends now', () => {
+  const closing = closingSession();
+  const r = reduce(closing, { kind: 'STARTUP', at: closing.closingUntil - 1000, examTabs: [] }, tailCfg);
+  assert.deepEqual(names(r), ['SESSION_DISARMED']);
+  assert.equal(r.session.state, 'IDLE');
+});
+
+test('stale MAX_TIMER / ABANDON_TIMER in CLOSING and CLOSING_TIMER in ARMED are no-ops', () => {
+  const closing = closingSession();
+  assert.deepEqual(reduce(closing, { kind: 'MAX_TIMER', at: T0 + 2000 }, tailCfg).events, []);
+  assert.deepEqual(reduce(closing, { kind: 'ABANDON_TIMER', at: T0 + 2000 }, tailCfg).events, []);
+  const armedS = armCs();
+  const r = reduce(armedS, { kind: 'CLOSING_TIMER', at: T0 + 2000 }, tailCfg);
+  assert.deepEqual(r.events, []);
+  assert.equal(r.session.state, 'ARMED');
 });

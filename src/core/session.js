@@ -16,7 +16,8 @@ export function reduce(session, input, cfg) {
   // emitted event would carry the outer input's (possibly absent) ids instead.
   const emit = (name, data = {}, src = input) => {
     s.seq += 1;
-    out.events.push(makeEvent({ seq: s.seq, at: src.at, name, tabId: src.tabId, windowId: src.windowId, data }));
+    const d = s.state === 'CLOSING' ? { phase: 'tail', ...data } : data;
+    out.events.push(makeEvent({ seq: s.seq, at: src.at, name, tabId: src.tabId, windowId: src.windowId, data: d }));
   };
   if (s.state === 'IDLE') {
     if (input.kind === 'NAV' && !cfg.startButton && classify(input.url, cfg) === 'start') {
@@ -48,10 +49,15 @@ function arm(s, input, cfg, emit, out, { trigger, label }) {
 function disarm(s, out, emit, input, outcome, trigger, data = {}) {
   const wasClosing = s.state === 'CLOSING';
   emit('SESSION_DISARMED', { outcome, trigger, ...data }, input);
-  out.effects.push({ type: 'MAX_ALARM_CLEAR' });
   if (wasClosing) out.effects.push({ type: 'CLOSING_ALARM_CLEAR' });
+  out.effects.push({ type: 'MAX_ALARM_CLEAR' });
   out.effects.push({ type: 'END', outcome, session: { ...s } });
   out.session = initial();
+}
+
+function tailExtra(s) {
+  if (s.triggerLabel === null) return {};
+  return s.trigger === 'result' ? { url: s.triggerLabel } : { label: s.triggerLabel };
 }
 
 function beginTail(s, out, emit, input, cfg, outcome, trigger, label) {
@@ -67,6 +73,10 @@ function beginTail(s, out, emit, input, cfg, outcome, trigger, label) {
 function examTabNav(s, input, cfg, emit, out) {
   const cls = classify(input.url, cfg);
   if (cls === 'result') {
+    if (s.state === 'CLOSING') {
+      if (input.url !== s.examUrl) { s.examUrl = input.url; emit('EXAM_NAV', { url: input.url }, input); }
+      return;
+    }
     emit('RESULT_PAGE', { url: input.url }, input);
     return beginTail(s, out, emit, input, cfg, 'RESULT', 'result', input.url);
   }
@@ -86,7 +96,7 @@ const HANDLERS = {
       out.effects.push({ type: 'ABANDON_ALARM_CLEAR' });
       return examTabNav(s, input, cfg, emit, out);
     }
-    if (classify(input.url, cfg) === 'result') {
+    if (s.state !== 'CLOSING' && classify(input.url, cfg) === 'result') {
       emit('RESULT_PAGE', { url: input.url }, input);
       return beginTail(s, out, emit, input, cfg, 'RESULT', 'result', input.url);
     }
@@ -94,12 +104,27 @@ const HANDLERS = {
     emit('PARALLEL_PAGE', { url: input.url, trigger: 'committed', incognito: Boolean(input.incognito) }, input);
   },
   TAB_REMOVED(s, input, cfg, emit, out) {
-    if (input.tabId !== s.examTabId || s.tabLostAt !== null) return;
+    if (input.tabId !== s.examTabId) return;
+    if (s.state === 'CLOSING') {
+      emit('EXAM_TAB_CLOSED', {}, input);
+      return disarm(s, out, emit, input, s.outcome, s.trigger, tailExtra(s));
+    }
+    if (s.tabLostAt !== null) return;
     s.tabLostAt = input.at;
     emit('EXAM_TAB_CLOSED', {}, input);
     out.effects.push({ type: 'ABANDON_ALARM_SET', when: input.at + cfg.abandonMin * 60000 });
   },
   STARTUP(s, input, cfg, emit, out) {
+    if (s.state === 'CLOSING') {
+      const t = input.examTabs[0];
+      if (t && s.closingUntil > input.at) {
+        Object.assign(s, { examTabId: t.tabId, examWindowId: t.windowId, examUrl: t.url, away: freshAway() });
+        out.effects.push({ type: 'CLOSING_ALARM_SET', when: s.closingUntil });
+        return;
+      }
+      const ids = { ...input, tabId: s.examTabId, windowId: s.examWindowId };
+      return disarm(s, out, emit, ids, s.outcome, s.trigger, tailExtra(s));
+    }
     const t = input.examTabs[0];
     if (t) {
       Object.assign(s, { examTabId: t.tabId, examWindowId: t.windowId, examUrl: t.url, tabLostAt: null, away: freshAway() });
@@ -113,12 +138,14 @@ const HANDLERS = {
     emit('EXTENSION_GAP', { lastSeenAt: input.lastSeenAt, gapMs: input.at - input.lastSeenAt, reason: input.reason }, input);
   },
   ABANDON_TIMER(s, input, cfg, emit, out) {
+    if (s.state === 'CLOSING') return;
     if (s.tabLostAt !== null) disarm(s, out, emit, input, 'ABANDONED', 'abandon');
   },
   PERIODIC(s, input, cfg, emit) {
     emit('PERIODIC', {}, input);
   },
   MAX_TIMER(s, input, cfg, emit, out) {
+    if (s.state === 'CLOSING') return;
     const ids = { ...input, tabId: s.examTabId, windowId: s.examWindowId };
     emit('MAX_TIME_REACHED', { maxAt: s.maxAt }, ids);
     if (s.tabLostAt !== null) {
@@ -126,6 +153,11 @@ const HANDLERS = {
       return disarm(s, out, emit, input, 'TIMED_OUT', 'max');
     }
     beginTail(s, out, emit, input, cfg, 'TIMED_OUT', 'max');
+  },
+  CLOSING_TIMER(s, input, cfg, emit, out) {
+    if (s.state !== 'CLOSING') return;
+    const ids = { ...input, tabId: s.examTabId, windowId: s.examWindowId };
+    disarm(s, out, emit, ids, s.outcome, s.trigger, tailExtra(s));
   },
 };
 
@@ -177,12 +209,19 @@ Object.assign(HANDLERS, {
     else if (input.name === 'END_CLICK') {
       emit('END_BUTTON_CLICKED', { label: data.label });
       s.endClickAt = input.at;
-      beginTail(s, out, emit, input, cfg, 'SUBMITTED', 'button', data.label);
+      if (s.state === 'CLOSING') {
+        s.closingUntil = input.at + cfg.tailMin * 60000;
+        out.effects.push({ type: 'CLOSING_ALARM_SET', when: s.closingUntil });
+      } else {
+        beginTail(s, out, emit, input, cfg, 'SUBMITTED', 'button', data.label);
+      }
     } else if (input.name === 'END_MARKER') {
       if (s.markerSeen) return;
       emit('END_MARKER_SEEN', { marker: data.marker });
       s.markerSeen = true;
-      beginTail(s, out, emit, input, cfg, 'AUTO_SUBMITTED', 'marker', data.marker);
+      if (s.state !== 'CLOSING') beginTail(s, out, emit, input, cfg, 'AUTO_SUBMITTED', 'marker', data.marker);
+    } else if (input.name === 'SCREEN_CHANGED') {
+      if (s.state === 'CLOSING') emit('SCREEN_CHANGED', { hash: data.hash });
     } else if (CS_PROBE.has(input.name)) out.effects.push({ type: 'PROBE' });
   },
   IDLE(s, input, cfg, emit) {
