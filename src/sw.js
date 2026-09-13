@@ -9,6 +9,7 @@ import { initial, reduce } from './core/session.js';
 import { headerLine, formatLine, chainLine } from './core/logline.js';
 import { GENESIS, shortHash, verify } from './core/hashchain.js';
 import { needsShot } from './core/events.js';
+import { EMPTY_TAIL, decide } from './core/tailshots.js';
 import { shotFile } from './core/ids.js';
 import { classify } from './core/urlmatch.js';
 import { suppressUi, writeFile, eraseOwnCompleted } from './adapters/downloads.js';
@@ -77,7 +78,10 @@ async function dispatchNow(input) {
     await store.set({ shots: {} });
     await store.patchMeta({ lastShot: null, lastError: null });
   }
-  const added = await takeShots(newEvents);
+  if (r.session.state === 'CLOSING' && session.state === 'ARMED') {
+    await store.patchMeta({ tail: EMPTY_TAIL });
+  }
+  const added = await takeShots(newEvents, input.pre);
   for (const ev of newEvents) {
     const line = chainLine(formatLine(ev), lastHash);
     ev.hash = lastHash = await shortHash(line);
@@ -122,13 +126,21 @@ async function runEffects(effects, cfg, pendingEnd) {
   }
 }
 
-async function takeShots(events) {
+async function takeShots(events, pre) {
   if (!events.some(needsShot)) return [];
   const { meta = {}, shots = {} } = await store.get(['meta', 'shots']);
   let last = meta.lastShot || { at: 0, file: null };
   const added = [];
   for (const ev of events) {
     if (!needsShot(ev)) continue;
+    if (ev.name === 'SCREEN_CHANGED') {
+      const file = shotFile(ev.t, ev.name);
+      shots[file] = pre.b64;
+      added.push({ file, b64: pre.b64 });
+      ev.shot = file;
+      last = { at: ev.t, file };
+      continue;
+    }
     if (last.file && ev.t - last.at < SHOT_GAP_MS) { ev.shot = last.file; continue; }
     try {
       if (NAV_BORN.has(ev.name)) await awaitLoaded(ev.tabId, PAINT_WAIT_MS);
@@ -163,6 +175,21 @@ async function flushNow() {
 }
 
 export const flush = () => enqueue(flushNow);
+
+export const screenChanged = (input) => enqueue(() => screenChangedNow(input));
+
+async function screenChangedNow(input) {
+  const { session, meta = {} } = await store.get(['session', 'meta']);
+  if (!session || session.state !== 'CLOSING' || input.tabId !== session.examTabId) return;
+  const tab = await getTab(input.tabId);
+  if (!tab || !tab.active) return;
+  const b64 = await captureJpeg(session.examWindowId);
+  const hash = await shortHash(b64);
+  const { keep, tail } = decide(meta.tail, { hash, at: input.at });
+  if (!keep) return;
+  await store.patchMeta({ tail });
+  await dispatchNow({ ...input, data: { hash }, pre: { b64 } });
+}
 
 // e.events/e.lines/e.shots are a snapshot taken when pendingEnd was written (dispatch()), not
 // read live from storage: a replay (recover()/tick() re-running this from meta.pendingEnd) must
@@ -284,7 +311,9 @@ chrome.downloads.onCreated.addListener((item) => {
 });
 chrome.runtime.onMessage.addListener((msg, sender) => {
   if (msg?.type !== 'cs' || !sender.tab) return;
-  dispatch({ kind: 'CS', name: msg.name, data: msg.data, tabId: sender.tab.id, windowId: sender.tab.windowId, url: sender.url, at: now() });
+  const input = { kind: 'CS', name: msg.name, data: msg.data, tabId: sender.tab.id, windowId: sender.tab.windowId, url: sender.url, at: now() };
+  if (msg.name === 'SCREEN_CHANGED') screenChanged(input);
+  else dispatch(input);
 });
 chrome.alarms.onAlarm.addListener(async (a) => {
   if (a.name === 'tick') await tick();
