@@ -12,6 +12,15 @@ test('needsShot follows the catalogue', () => {
   assert.equal(needsShot({ name: 'PARALLEL_PAGE', data: { trigger: 'committed' } }), false);
   assert.equal(needsShot({ name: 'SESSION_DISARMED', data: { outcome: 'RESULT' } }), true);
   assert.equal(needsShot({ name: 'SESSION_DISARMED', data: { outcome: 'ABANDONED' } }), false);
+  assert.equal(needsShot({ name: 'SESSION_DISARMED', data: { outcome: 'SUBMITTED' } }), true);
+  assert.equal(needsShot({ name: 'SESSION_DISARMED', data: { outcome: 'AUTO_SUBMITTED' } }), true);
+  assert.equal(needsShot({ name: 'SESSION_DISARMED', data: { outcome: 'TIMED_OUT' } }), true);
+  assert.equal(needsShot({ name: 'START_BUTTON_CLICKED', data: {} }), true);
+  assert.equal(needsShot({ name: 'END_BUTTON_CLICKED', data: {} }), true);
+  assert.equal(needsShot({ name: 'END_MARKER_SEEN', data: {} }), true);
+  assert.equal(needsShot({ name: 'RESULT_PAGE', data: {} }), true);
+  assert.equal(needsShot({ name: 'MAX_TIME_REACHED', data: {} }), true);
+  assert.equal(needsShot({ name: 'SCREEN_CHANGED', data: {} }), true);
 });
 
 test('makeEvent shapes the record and omits absent ids', () => {
