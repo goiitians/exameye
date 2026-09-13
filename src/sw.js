@@ -22,7 +22,15 @@ const SHOT_GAP_MS = 2000;
 const now = () => Date.now();
 
 let queue = Promise.resolve();
-const enqueue = (fn) => { queue = queue.catch(() => {}).then(fn); return queue; };
+// A step that throws is recorded (console + meta.lastError for the popup) and swallowed: the
+// queue must keep serving later inputs, and nothing awaits dispatch() from the listeners anyway.
+const enqueue = (fn) => {
+  queue = queue.then(fn).catch(async (e) => {
+    console.error('ExamEye step failed', e);
+    await store.patchMeta({ lastError: `${new Date().toISOString()} ${e?.message || e}` }).catch(() => {});
+  });
+  return queue;
+};
 export const settled = () => queue;
 
 async function loadConfig() {
@@ -43,59 +51,59 @@ async function applyConfigNow() {
 
 export const applyConfig = () => enqueue(applyConfigNow);
 
-export function dispatch(input) {
-  return enqueue(async () => {
-    const cfg = await loadConfig();
-    if (!cfg) return;
-    const st = await store.get(['session', 'events', 'lines', 'lastHash', 'meta']);
-    let session = st.session || initial();
-    let { events = [], lines = [], lastHash = GENESIS } = st;
-    const meta = st.meta || {};
-    const newEvents = [];
-    if (session.state === 'ARMED' && meta.lastSeenAt && input.at - meta.lastSeenAt > GAP_MS) {
-      const g = reduce(session, { kind: 'GAP', at: input.at, lastSeenAt: meta.lastSeenAt, reason: input.kind === 'STARTUP' ? 'browser-restart' : 'sw-restart' }, cfg);
-      session = g.session;
-      newEvents.push(...g.events);
-    }
-    const r = reduce(session, input, cfg);
-    newEvents.push(...r.events);
-    if (r.session.state === 'ARMED' && session.state === 'IDLE') {
-      const h = headerLine(r.session);
-      events = []; lines = [h]; lastHash = await shortHash(h);
-      await store.set({ shots: {} });
-      await store.patchMeta({ lastShot: null });
-    }
-    const added = await takeShots(newEvents);
-    for (const ev of newEvents) {
-      const line = chainLine(formatLine(ev), lastHash);
-      ev.hash = lastHash = await shortHash(line);
-      lines.push(line);
-      events.push(ev);
-    }
-    if (newEvents.length) {
-      const base = `${cfg.subfolder}/${(r.session.state === 'ARMED' ? r.session : session).id}`;
-      let { pending = {} } = await store.get('pending');
-      pending = putText(pending, `${base}/log.txt`, 'text/plain', lines.join('\n') + '\n');
-      for (const s of added) pending = putBase64(pending, `${base}/${s.file}`, 'image/jpeg', s.b64);
-      await store.set({ pending });
-    }
-    const endEffect = r.effects.find(e => e.type === 'END');
-    let pendingEnd;
-    if (endEffect) {
-      const { shots: endShots = {} } = await store.get('shots');
-      pendingEnd = { outcome: endEffect.outcome, session: endEffect.session, events: [...events], lines: [...lines], shots: endShots };
-      const { meta: currentMeta = {} } = await store.get('meta');
-      // events/lines/shots are cleared here, atomically with the pendingEnd snapshot that now
-      // holds them: leaving the live clear for endSession's own (later, possibly much later)
-      // final write would risk wiping a NEW session armed in between (see below).
-      await store.set({ session: r.session, events: [], lines: [], shots: {}, lastHash, meta: { ...currentMeta, pendingEnd } });
-    } else {
-      await store.set({ session: r.session, events, lines, lastHash });
-    }
-    await store.patchMeta({ lastSeenAt: input.at });
-    await runEffects(r.effects, cfg, pendingEnd);
-    if (newEvents.length) await flushNow();
-  });
+export const dispatch = (input) => enqueue(() => dispatchNow(input));
+
+async function dispatchNow(input) {
+  const cfg = await loadConfig();
+  if (!cfg) return;
+  const st = await store.get(['session', 'events', 'lines', 'lastHash', 'meta']);
+  let session = st.session || initial();
+  let { events = [], lines = [], lastHash = GENESIS } = st;
+  const meta = st.meta || {};
+  const newEvents = [];
+  if (session.state === 'ARMED' && meta.lastSeenAt && input.at - meta.lastSeenAt > GAP_MS) {
+    const g = reduce(session, { kind: 'GAP', at: input.at, lastSeenAt: meta.lastSeenAt, reason: input.kind === 'STARTUP' ? 'browser-restart' : 'sw-restart' }, cfg);
+    session = g.session;
+    newEvents.push(...g.events);
+  }
+  const r = reduce(session, input, cfg);
+  newEvents.push(...r.events);
+  if (r.session.state === 'ARMED' && session.state === 'IDLE') {
+    const h = headerLine(r.session);
+    events = []; lines = [h]; lastHash = await shortHash(h);
+    await store.set({ shots: {} });
+    await store.patchMeta({ lastShot: null });
+  }
+  const added = await takeShots(newEvents);
+  for (const ev of newEvents) {
+    const line = chainLine(formatLine(ev), lastHash);
+    ev.hash = lastHash = await shortHash(line);
+    lines.push(line);
+    events.push(ev);
+  }
+  if (newEvents.length) {
+    const base = `${cfg.subfolder}/${(r.session.state === 'ARMED' ? r.session : session).id}`;
+    let { pending = {} } = await store.get('pending');
+    pending = putText(pending, `${base}/log.txt`, 'text/plain', lines.join('\n') + '\n');
+    for (const s of added) pending = putBase64(pending, `${base}/${s.file}`, 'image/jpeg', s.b64);
+    await store.set({ pending });
+  }
+  const endEffect = r.effects.find(e => e.type === 'END');
+  let pendingEnd;
+  if (endEffect) {
+    const { shots: endShots = {} } = await store.get('shots');
+    pendingEnd = { outcome: endEffect.outcome, session: endEffect.session, events: [...events], lines: [...lines], shots: endShots };
+    const { meta: currentMeta = {} } = await store.get('meta');
+    // events/lines/shots are cleared here, atomically with the pendingEnd snapshot that now
+    // holds them: leaving the live clear for endSession's own (later, possibly much later)
+    // final write would risk wiping a NEW session armed in between (see below).
+    await store.set({ session: r.session, events: [], lines: [], shots: {}, lastHash, meta: { ...currentMeta, pendingEnd } });
+  } else {
+    await store.set({ session: r.session, events, lines, lastHash });
+  }
+  await store.patchMeta({ lastSeenAt: input.at });
+  await runEffects(r.effects, cfg, pendingEnd);
+  if (newEvents.length) await flushNow();
 }
 
 async function runEffects(effects, cfg, pendingEnd) {
@@ -178,14 +186,14 @@ async function endSession(e, cfg) {
 // Reads meta.pendingEnd INSIDE the enqueued closure, not before: a tick/recover racing an
 // in-flight dispatch()+endSession() must see it only after that call (and its own pendingEnd
 // clear) has actually finished, never a stale value captured before the queue was even reached.
-function finishPendingEnd() {
-  return enqueue(async () => {
-    const { meta = {} } = await store.get('meta');
-    if (!meta.pendingEnd) return;
-    const cfg = await loadConfig();
-    if (cfg) await endSession(meta.pendingEnd, cfg);
-  });
+async function finishPendingEndNow() {
+  const { meta = {} } = await store.get('meta');
+  if (!meta.pendingEnd) return;
+  const cfg = await loadConfig();
+  if (cfg) await endSession(meta.pendingEnd, cfg);
 }
+
+const finishPendingEnd = () => enqueue(finishPendingEndNow);
 
 export async function tick() {
   await finishPendingEnd();
@@ -196,13 +204,18 @@ export async function tick() {
   await flush();
 }
 
-export async function recover() {
-  await finishPendingEnd();
-  const cfg = await loadConfig();
-  const { session } = await store.get('session');
-  if (!cfg || session?.state !== 'ARMED') return;
-  const examTabs = (await queryAllTabs()).filter(t => classify(t.url, cfg)).map(t => ({ tabId: t.id, windowId: t.windowId, url: t.url }));
-  await dispatch({ kind: 'STARTUP', at: now(), examTabs });
+// One queue step, enqueued synchronously by the onStartup listener: restored tabs' onCommitted
+// fires while boot() is still awaiting, and a NAV from the exam tab's new id dispatched before
+// STARTUP re-adopts it would be logged as a PARALLEL_PAGE (and the gap as 'sw-restart').
+export function recover() {
+  return enqueue(async () => {
+    await finishPendingEndNow();
+    const cfg = await loadConfig();
+    const { session } = await store.get('session');
+    if (!cfg || session?.state !== 'ARMED') return;
+    const examTabs = (await queryAllTabs()).filter(t => classify(t.url, cfg)).map(t => ({ tabId: t.id, windowId: t.windowId, url: t.url }));
+    await dispatchNow({ kind: 'STARTUP', at: now(), examTabs });
+  });
 }
 
 async function probeWindow() {
@@ -232,7 +245,7 @@ async function boot() {
 
 eraseOwnCompleted();
 chrome.runtime.onInstalled.addListener(boot);
-chrome.runtime.onStartup.addListener(async () => { await boot(); await recover(); });
+chrome.runtime.onStartup.addListener(() => { recover(); return boot(); });
 chrome.storage.onChanged.addListener((changes) => { if (changes.config) applyConfig(); });
 chrome.webNavigation.onCommitted.addListener(async (d) => {
   if (d.frameId !== 0) return;
