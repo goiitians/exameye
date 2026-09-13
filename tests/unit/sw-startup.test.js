@@ -44,3 +44,10 @@ test('a queued step that throws records meta.lastError and does not poison later
   await sw.dispatch({ kind: 'NAV', tabId: 44, windowId: 9, url: 'https://e.x/q/2', at: Date.now() });
   assert.equal((await names()).at(-1), 'EXAM_NAV');
 });
+
+test('arming a new session clears the previous lastError so the popup starts clean', async () => {
+  assert.ok((await get('meta')).meta.lastError);
+  await sw.dispatch({ kind: 'NAV', tabId: 44, windowId: 9, url: 'https://e.x/result', at: Date.now() });
+  await sw.dispatch({ kind: 'NAV', tabId: 44, windowId: 9, url: 'https://e.x/start', at: Date.now() });
+  assert.equal((await get('meta')).meta.lastError, null);
+});

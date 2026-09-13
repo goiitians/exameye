@@ -75,7 +75,7 @@ async function dispatchNow(input) {
     const h = headerLine(r.session);
     events = []; lines = [h]; lastHash = await shortHash(h);
     await store.set({ shots: {} });
-    await store.patchMeta({ lastShot: null });
+    await store.patchMeta({ lastShot: null, lastError: null });
   }
   const added = await takeShots(newEvents);
   for (const ev of newEvents) {

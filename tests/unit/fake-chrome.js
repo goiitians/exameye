@@ -32,7 +32,7 @@ export function installFakeChrome() {
     tabs: {
       list: [],
       async query(q = {}) { return c.tabs.list.filter(t => (q.active === undefined || Boolean(t.active) === q.active) && (q.windowId === undefined || t.windowId === q.windowId)); },
-      async get(id) { const t = c.tabs.list.find(t => t.id === id); if (!t) throw new Error('No tab with id: ' + id); return t; },
+      async get(id) { const t = c.tabs.list.find(t => t.id === id); if (!t) throw new Error('No tab with id: ' + id); return { status: 'complete', ...t }; },
       captureVisibleTab: async () => 'data:image/jpeg;base64,/9j/FAKE',
       onActivated: evt(), onRemoved: evt(), onUpdated: evt(),
     },

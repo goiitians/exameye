@@ -61,6 +61,7 @@ const HANDLERS = {
       return examTabNav(s, input, cfg, emit, out);
     }
     if (classify(input.url, cfg) === 'result') return disarm(s, out, emit, input, 'RESULT', { url: input.url });
+    if (input.tabId === s.away.tabId) s.away.tabUrl = input.url;
     emit('PARALLEL_PAGE', { url: input.url, trigger: 'committed', incognito: Boolean(input.incognito) }, input);
   },
   TAB_REMOVED(s, input, cfg, emit, out) {

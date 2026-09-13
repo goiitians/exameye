@@ -37,6 +37,15 @@ test('re-activating the same parallel tab (windows.onFocusChanged + tabs.onActiv
   assert.deepEqual(names(r), ['TAB_SWITCH', 'PARALLEL_PAGE']);
 });
 
+test('a parallel tab that navigates is recorded once (committed), not again on the next synthetic activation', () => {
+  let r = reduce(armed(), act(42, T0 + 1000), cfg);
+  r = reduce(r.session, { kind: 'NAV', tabId: 42, windowId: 3, url: 'https://g.x/search?q=answer', incognito: false, at: T0 + 2000 }, cfg);
+  assert.deepEqual(names(r), ['PARALLEL_PAGE']);
+  assert.equal(r.events[0].data.trigger, 'committed');
+  r = reduce(r.session, act(42, T0 + 2500, { url: 'https://g.x/search?q=answer' }), cfg);
+  assert.deepEqual(names(r), []);
+});
+
 test('focus left/returned pair with duration, no duplicates', () => {
   let r = reduce(armed(), { kind: 'FOCUS', windowId: -1, at: T0 }, cfg);
   assert.deepEqual(names(r), ['FOCUS_LEFT_CHROME']);
