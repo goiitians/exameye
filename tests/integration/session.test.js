@@ -10,7 +10,7 @@ const decodeDataUrl = (url) => {
 
 test('arm on start page, record a tab switch, disarm on result, files written', async () => {
   const site = await startSite();
-  const config = { startPrefix: `${site.origin}/exam/start.html`, examPrefix: '', resultPrefix: `${site.origin}/exam/result.html`, seat: 'T1', subfolder: 'ExamEyeTest', shotIntervalMin: 10, abandonMin: 10 };
+  const config = { startPrefix: `${site.origin}/exam/start.html`, examPrefix: '', resultPrefix: `${site.origin}/exam/result.html`, seat: 'T1', subfolder: 'ExamEyeTest', shotIntervalMin: 10, abandonMin: 10, startButton: '', endButton: '', endMarker: '', maxMin: 0, tailMin: 0 };
   const b = await launch(config);
   let collector;
   try {
@@ -99,6 +99,116 @@ test('arm on start page, record a tab switch, disarm on result, files written', 
         return window.__dl.every(i => i.state === 'complete' || done.has(i.id));
       })).catch(e => console.warn(`download drain: ${e.message}`));
     }
+    await b.close();
+    site.server.close();
+  }
+});
+
+async function collectDownloads(b) {
+  const extId = new URL(b.worker.url()).host;
+  const collector = await b.context.newPage();
+  await collector.goto(`chrome-extension://${extId}/src/options/options.html`);
+  await collector.evaluate(() => {
+    window.__dl = [];
+    window.__dlc = [];
+    chrome.downloads.onCreated.addListener((i) => window.__dl.push(i));
+    chrome.downloads.onChanged.addListener((d) => { if (d.state) window.__dlc.push({ id: d.id, state: d.state.current }); });
+  });
+  return collector;
+}
+
+async function drainDownloads(collector) {
+  if (!collector) return;
+  await waitFor(() => collector.evaluate(() => {
+    const done = new Set(window.__dlc.filter(c => c.state === 'complete' || c.state === 'interrupted').map(c => c.id));
+    return window.__dl.every(i => i.state === 'complete' || done.has(i.id));
+  })).catch(e => console.warn(`download drain: ${e.message}`));
+}
+
+test('start button arms; confirm click starts the tail; tab close ends with SUBMITTED', async () => {
+  const site = await startSite();
+  const config = { startPrefix: `${site.origin}/exam/paper.html`, examPrefix: '', resultPrefix: '', seat: 'T2', subfolder: 'ExamEyeTest', shotIntervalMin: 10, abandonMin: 10, startButton: 'Start', endButton: 'Confirm submission', endMarker: 'Your answers have been submitted', maxMin: 0, tailMin: 1 };
+  const b = await launch(config);
+  let collector;
+  try {
+    collector = await collectDownloads(b);
+    await b.page.bringToFront();
+
+    await b.page.goto(`${site.origin}/exam/paper.html`);
+    await new Promise(r => setTimeout(r, 1000));
+    assert.equal((await storage(b.worker, 'session')).session?.state, 'IDLE');
+
+    await b.page.click('#start');
+    await waitFor(async () => (await storage(b.worker, 'session')).session?.state === 'ARMED');
+    const { events: armEvents } = await storage(b.worker, 'events');
+    assert.equal(armEvents.find(e => e.name === 'SESSION_ARMED')?.data.trigger, 'button');
+
+    await b.page.click('#next');
+    await b.page.click('#next');
+    await b.page.click('#next');
+    await b.page.click('#finish');
+    await b.page.click('#confirm');
+    await waitFor(async () => (await storage(b.worker, 'session')).session?.state === 'CLOSING');
+    assert.equal((await storage(b.worker, 'session')).session?.outcome, 'SUBMITTED');
+
+    await waitFor(async () => ((await storage(b.worker, 'events')).events || []).some(e => e.name === 'END_MARKER_SEEN'));
+    await waitFor(async () => ((await storage(b.worker, 'events')).events || []).some(e => e.name === 'SCREEN_CHANGED' && e.data.phase === 'tail' && e.shot));
+
+    await b.page.close();
+    await waitFor(async () => (await storage(b.worker, 'session')).session?.state === 'IDLE');
+
+    const readDl = () => collector.evaluate(() => window.__dl);
+    await waitFor(async () => {
+      const items = await readDl();
+      return items.some(i => i.mime === 'text/plain' && (decodeDataUrl(i.url) || '').includes('ExamEye summary'));
+    });
+    const textPlain = (await readDl()).filter(i => i.mime === 'text/plain').map(i => decodeDataUrl(i.url)).filter(Boolean);
+    const summary = textPlain.find(c => c.includes('ExamEye summary'));
+    assert.ok(summary, 'expected a summary.txt write');
+    assert.match(summary, /Outcome: SUBMITTED/);
+    assert.match(summary, /Trigger:   end button "confirm submission" clicked/);
+    assert.match(summary, /Post-submit tail/);
+  } finally {
+    await drainDownloads(collector);
+    await b.close();
+    site.server.close();
+  }
+});
+
+test('auto-submit: marker alone ends the exam phase as AUTO_SUBMITTED', async () => {
+  const site = await startSite();
+  const config = { startPrefix: `${site.origin}/exam/paper.html`, examPrefix: '', resultPrefix: '', seat: 'T3', subfolder: 'ExamEyeTest', shotIntervalMin: 10, abandonMin: 10, startButton: 'Start', endButton: 'Confirm submission', endMarker: 'Your answers have been submitted', maxMin: 0, tailMin: 1 };
+  const b = await launch(config);
+  let collector;
+  try {
+    collector = await collectDownloads(b);
+    await b.page.bringToFront();
+
+    await b.page.goto(`${site.origin}/exam/paper.html?auto=1`);
+    await b.page.click('#start');
+    await waitFor(async () => (await storage(b.worker, 'session')).session?.state === 'ARMED');
+
+    await waitFor(async () => ((await storage(b.worker, 'events')).events || []).some(e => e.name === 'END_MARKER_SEEN'), 8000);
+    const { session: closing, events } = await storage(b.worker, ['session', 'events']);
+    assert.equal(closing.state, 'CLOSING');
+    assert.equal(closing.outcome, 'AUTO_SUBMITTED');
+    assert.ok(!(events || []).some(e => e.name === 'END_BUTTON_CLICKED'), 'expected no END_BUTTON_CLICKED');
+
+    await b.page.close();
+    await waitFor(async () => (await storage(b.worker, 'session')).session?.state === 'IDLE');
+
+    const readDl = () => collector.evaluate(() => window.__dl);
+    await waitFor(async () => {
+      const items = await readDl();
+      return items.some(i => i.mime === 'text/plain' && (decodeDataUrl(i.url) || '').includes('ExamEye summary'));
+    });
+    const textPlain = (await readDl()).filter(i => i.mime === 'text/plain').map(i => decodeDataUrl(i.url)).filter(Boolean);
+    const summary = textPlain.find(c => c.includes('ExamEye summary'));
+    assert.ok(summary, 'expected a summary.txt write');
+    assert.match(summary, /Outcome: AUTO_SUBMITTED/);
+    assert.match(summary, /end marker "your answers have been submitted" seen/);
+  } finally {
+    await drainDownloads(collector);
     await b.close();
     site.server.close();
   }

@@ -1,0 +1,27 @@
+<!doctype html><meta charset="utf-8"><title>Exam paper</title>
+<div id="app"><button id="start">Start</button></div>
+<script>
+(function () {
+  const app = document.getElementById('app');
+  function showScreen(n) {
+    if (n <= 3) {
+      app.innerHTML = `<h1>Screen ${n}</h1><button id="next">Next</button>`;
+      document.getElementById('next').addEventListener('click', () => showScreen(n + 1));
+    } else {
+      app.innerHTML = `<h1>Screen ${n}</h1><button id="finish">Finish</button>`;
+      document.getElementById('finish').addEventListener('click', showConfirm);
+    }
+  }
+  function showConfirm() {
+    app.innerHTML = '<p>Are you sure?</p><button id="cancel">Cancel</button><button id="confirm">Confirm submission</button>';
+    document.getElementById('cancel').addEventListener('click', () => showScreen(3));
+    document.getElementById('confirm').addEventListener('click', submit);
+  }
+  function submit() {
+    app.innerHTML = '<h1>Submitted</h1><p>Your answers have been submitted.</p>';
+    setTimeout(() => { app.innerHTML += '<p>Result: 7/10</p>'; }, 1500);
+  }
+  document.getElementById('start').addEventListener('click', () => showScreen(1));
+  if (new URLSearchParams(location.search).get('auto') === '1') setTimeout(submit, 3000);
+})();
+</script>
