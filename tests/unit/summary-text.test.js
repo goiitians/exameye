@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { renderSummaryText } from '../../src/core/summary-text.js';
+import { renderSummaryText, describeOutcome } from '../../src/core/summary-text.js';
 import { tally } from '../../src/core/counters.js';
+import { fmtLocal } from '../../src/core/ids.js';
 
 const started = new Date(2026, 8, 12, 9, 15, 2).getTime();
 const events = [
@@ -17,8 +18,8 @@ test('summary.txt layout', () => {
   assert.equal(lines[0], 'ExamEye summary');
   assert.equal(lines[1], 'Session:   20260912-091502_A17   Seat: A17');
   assert.match(lines[2], /^Started:   2026-09-12 09:15:02 \([+-]\d\d:\d\d\)   Ended: 2026-09-12 10:17:05   Outcome: RESULT$/);
-  assert.equal(lines[3], 'Duration:  01:02:03');
-  assert.equal(lines[4], 'Log chain: OK (4 lines)');
+  assert.equal(lines[4], 'Duration:  01:02:03');
+  assert.equal(lines[5], 'Log chain: OK (4 lines)');
   assert.ok(lines.includes('  PARALLEL_PAGE .......... 1'));
   assert.ok(lines.includes('  Tab away ......... 00:00:03'));
   assert.ok(lines.includes('  00:00:03  1  https://g.x/  "G"  [incognito]'));
@@ -42,4 +43,41 @@ test('time away block: screensaver/lock row and focus-left annotation (addendum 
   assert.ok(lines.includes('  Focus left ....... 00:00:00   (user; screensaver: 1, idle: 0 not counted)'));
   assert.ok(lines.includes('  Screensaver/lock . 00:00:04'));
   assert.ok(lines.includes('  SCREENSAVER ............ 1'));
+});
+
+test('describeOutcome names the trigger', () => {
+  const t1 = started + 61000;
+  assert.equal(describeOutcome({ startedAt: started, maxAt: null, trigger: 'button', triggerLabel: 'Submit', examEndedAt: t1 }),
+    `end button "Submit" clicked at ${fmtLocal(t1).slice(11)}`);
+  assert.equal(describeOutcome({ startedAt: started, maxAt: null, trigger: 'marker', triggerLabel: 'answers submitted', examEndedAt: t1 }),
+    `end marker "answers submitted" seen at ${fmtLocal(t1).slice(11)}`);
+  assert.equal(describeOutcome({ startedAt: started, maxAt: null, trigger: 'result', triggerLabel: 'https://e.x/result/9', examEndedAt: t1 }),
+    `result URL https://e.x/result/9 reached at ${fmtLocal(t1).slice(11)}`);
+  const maxAt = started + 180 * 60000;
+  assert.equal(describeOutcome({ startedAt: started, maxAt, trigger: 'max', triggerLabel: null, examEndedAt: maxAt }),
+    `maximum time (180 min) reached at ${fmtLocal(maxAt).slice(11)}   (auto-submit expected at ${fmtLocal(maxAt).slice(11)})`);
+  assert.equal(describeOutcome({ startedAt: started, maxAt: null, trigger: 'abandon', triggerLabel: null, examEndedAt: null }),
+    'exam tab closed and not reopened');
+});
+
+test('Trigger and Phases lines', () => {
+  const examEndedAt = started + 3300000;
+  const maxAt = started + 3600000;
+  const evs = [{ seq: 1, t: started, name: 'SESSION_ARMED', data: {}, shot: 'screenshots/a.jpg' }];
+  const session = { id: 'X', seat: 'A1', startedAt: started, trigger: 'button', triggerLabel: 'submit', examEndedAt, maxAt, closingUntil: examEndedAt + 300000 };
+  const ctx3 = { session, outcome: 'SUBMITTED', endedAt: examEndedAt + 300000, events: evs, tally: tally(evs), integrity: { ok: true, firstBad: -1, lines: 2 } };
+  const lines = renderSummaryText(ctx3).split('\n');
+  assert.match(lines[3], /^Trigger:   end button "submit" clicked at \d\d:\d\d:\d\d   \(auto-submit expected at \d\d:\d\d:\d\d\)$/);
+  const phasesAt = lines.indexOf('Phases');
+  assert.ok(phasesAt !== -1);
+  assert.match(lines[phasesAt + 1], /^  Exam .+ \d\d:\d\d:\d\d - \d\d:\d\d:\d\d  1 screenshots$/);
+  assert.match(lines[phasesAt + 2], /^  Post-submit tail .+ \d\d:\d\d:\d\d - \d\d:\d\d:\d\d  0 screenshots$/);
+
+  const legacySession = { id: 'Y', seat: 'A1', startedAt: started, trigger: null, triggerLabel: null, examEndedAt: null, maxAt: null, closingUntil: null };
+  const ctx4 = { session: legacySession, outcome: 'ABANDONED', endedAt: started + 60000, events: evs, tally: tally(evs), integrity: { ok: true, firstBad: -1, lines: 2 } };
+  const lines2 = renderSummaryText(ctx4).split('\n');
+  assert.equal(lines2[3], 'Trigger:   exam tab closed and not reopened');
+  const phasesAt2 = lines2.indexOf('Phases');
+  assert.match(lines2[phasesAt2 + 1], /^  Exam /);
+  assert.equal(lines2[phasesAt2 + 2], '');
 });

@@ -29,3 +29,10 @@ test('linked variant references files relative to the session folder', () => {
   assert.ok(html.includes('<img src="screenshots/s1.jpg"'));
   assert.ok(!html.includes('data:image/jpeg'));
 });
+
+test('includes Trigger row and Phases table', () => {
+  const session = { ...ctx.session, trigger: 'button', triggerLabel: 'finish', examEndedAt: started + 30000, maxAt: null, closingUntil: started + 90000 };
+  const html = renderSummaryHtml({ ...ctx, session, inlineShots: true });
+  assert.ok(html.includes('<td>Trigger</td>'));
+  assert.ok(html.includes('Post-submit tail'));
+});

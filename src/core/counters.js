@@ -8,6 +8,8 @@ export function tally(events) {
   const parallel = new Map();
   const idleStarts = [];
   const focusIntervals = [];
+  const tailShots = new Set();
+  let tailEvents = 0;
   let open = null;
   let openIdleState = null;
   let openFocusAt = null;
@@ -16,6 +18,7 @@ export function tally(events) {
   for (const ev of events) {
     lastT = ev.t;
     counts[ev.name] = (counts[ev.name] || 0) + 1;
+    if (ev.data.phase === 'tail') { tailEvents += 1; if (ev.shot) tailShots.add(ev.shot); }
     if (DURATION[ev.name]) { const [k, f] = DURATION[ev.name]; durations[k] += ev.data[f] || 0; }
 
     if (ev.name === 'IDLE_START') {
@@ -56,5 +59,5 @@ export function tally(events) {
     else { attribution.user += 1; durations.focusLeftMs += awayMs; }
   }
 
-  return { counts, durations, parallel: [...parallel.values()].sort((a, b) => b.focusedMs - a.focusedMs), attribution };
+  return { counts, durations, parallel: [...parallel.values()].sort((a, b) => b.focusedMs - a.focusedMs), attribution, tail: { events: tailEvents, shots: tailShots.size } };
 }

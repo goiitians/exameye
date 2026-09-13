@@ -39,6 +39,7 @@ test('empty input', () => {
     durations: { tabAwayMs: 0, focusLeftMs: 0, minimizedMs: 0, idleMs: 0, screensaverMs: 0 },
     parallel: [],
     attribution: { screensaver: 0, idle: 0, user: 0 },
+    tail: { events: 0, shots: 0 },
   });
 });
 
@@ -83,6 +84,25 @@ test('idle attribution: idle state (not locked) inside the window classifies as 
   assert.equal(t.durations.idleMs, 300);
   assert.equal(t.durations.screensaverMs, 0);
   assert.equal(t.counts.SCREENSAVER, undefined);
+});
+
+test('tail counts events and distinct shots with phase tail', () => {
+  const events = [
+    ev(1, 0, 'SESSION_ARMED', { url: 's' }, 1),
+    ev(2, 1000, 'END_BUTTON_CLICKED', { label: 'finish' }, 41),
+    ev(3, 2000, 'SCREEN_CHANGED', { phase: 'tail', hash: 'a' }, 41),
+    ev(4, 3000, 'SCREEN_CHANGED', { phase: 'tail', hash: 'b' }, 41),
+  ];
+  events[2].shot = 'screenshots/x.jpg';
+  events[3].shot = 'screenshots/x.jpg';
+  const t = tally(events);
+  assert.deepEqual(t.tail, { events: 2, shots: 1 });
+});
+
+test('tail is zero when no phase:tail events exist', () => {
+  const events = [ev(1, 0, 'SESSION_ARMED', { url: 's' }, 1)];
+  const t = tally(events);
+  assert.deepEqual(t.tail, { events: 0, shots: 0 });
 });
 
 test('user attribution: no idle event in the window counts as user and adds to focusLeftMs', () => {
