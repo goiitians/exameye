@@ -12,3 +12,16 @@ test('manifest is MV3 with the agreed permissions', async () => {
   assert.equal(m.incognito, 'spanning');
   assert.equal(m.minimum_chrome_version, '120');
 });
+
+test('manifest declares icons for every store-required size and each file exists as a PNG of that size', async () => {
+  const m = JSON.parse(await readFile(new URL('../../manifest.json', import.meta.url), 'utf8'));
+  for (const size of ['16', '32', '48', '128']) {
+    const path = m.icons?.[size];
+    assert.ok(path, `icons.${size}`);
+    const buf = await readFile(new URL(`../../${path}`, import.meta.url));
+    assert.equal(buf.subarray(1, 4).toString(), 'PNG', path);
+    assert.equal(buf.readUInt32BE(16), Number(size), `${path} width`);
+    assert.equal(buf.readUInt32BE(20), Number(size), `${path} height`);
+  }
+  assert.deepEqual(m.action.default_icon, m.icons);
+});

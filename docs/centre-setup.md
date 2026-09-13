@@ -3,9 +3,20 @@
 Do this once per machine. After step 6 the extension needs no clicks on browser start or exam start.
 
 ## 1. Install
-- Chrome: `chrome://extensions` -> Developer mode -> Load unpacked -> select the ExamEye folder (or install from the Web Store listing when published).
-- Edge: `edge://extensions` -> Developer mode -> Load unpacked (or Edge Add-ons listing).
-- Managed fleet: push the extension id via the `ExtensionInstallForcelist` policy (same policy name on Chrome and Edge).
+Two routes; pick one per centre.
+
+**Unpacked copy (hand-installed, one machine at a time)**
+- Copy the ExamEye folder (the one containing `manifest.json`) somewhere it will not be moved or deleted, e.g. `C:\ExamEye` or `/opt/exameye`. Chrome loads it from that path on every start; moving it disables the extension.
+- Chrome: `chrome://extensions` -> Developer mode ON -> Load unpacked -> select the folder.
+- Edge: `edge://extensions` -> Developer mode ON -> Load unpacked -> select the folder.
+- Chrome shows a "Disable developer mode extensions" bubble on each start; dismissing it is harmless, and it never disables ExamEye. It does not appear when Developer mode is left ON.
+- The extension id differs per machine on this route (it is derived from the folder path), so it cannot be used with the policies below.
+
+**Store listing (required for managed fleets)**
+- `ExtensionInstallForcelist` (same policy name on Chrome and Edge) only accepts extensions that are hosted: an unpacked folder cannot be force-installed.
+- Publish ExamEye as an *unlisted* item on the Chrome Web Store (Chrome) and Microsoft Edge Add-ons (Edge). Unlisted = installable by anyone with the link or by policy, but not searchable. The store review is what takes time; start it before the exam window.
+- Alternative without a store: self-host the packed `.crx` and an update-manifest XML on an internal HTTPS server and reference both in the policy (`<id>;<update_url>`). This keeps one fixed extension id, but you own the hosting and the signing key.
+- With a listing or a self-hosted CRX, push the id via `ExtensionInstallForcelist`; the extension then installs on browser start with no clicks and cannot be disabled by the candidate.
 
 ## 2. Allow in Incognito / InPrivate (one time)
 - Chrome: `chrome://extensions` -> ExamEye -> Details -> "Allow in Incognito" ON.
