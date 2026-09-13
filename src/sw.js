@@ -63,6 +63,7 @@ export function dispatch(input) {
       const h = headerLine(r.session);
       events = []; lines = [h]; lastHash = await shortHash(h);
       await store.set({ shots: {} });
+      await store.patchMeta({ lastShot: null });
     }
     const added = await takeShots(newEvents);
     for (const ev of newEvents) {
@@ -107,6 +108,7 @@ async function runEffects(effects, cfg, pendingEnd) {
 }
 
 async function takeShots(events) {
+  if (!events.some(needsShot)) return [];
   const { meta = {}, shots = {} } = await store.get(['meta', 'shots']);
   let last = meta.lastShot || { at: 0, file: null };
   const added = [];
@@ -218,7 +220,7 @@ export async function probe() {
 async function returnToWindow(windowId) {
   const [tab] = await queryActiveTab(windowId);
   if (!tab) return;
-  await dispatch({ kind: 'TAB_ACTIVATED', tabId: tab.id, windowId: tab.windowId, url: tab.url || '', title: tab.title || '', incognito: Boolean(tab.incognito), at: now() });
+  await dispatch({ kind: 'TAB_ACTIVATED', tabId: tab.id, windowId: tab.windowId, url: tab.pendingUrl || tab.url || '', title: tab.title || '', incognito: Boolean(tab.incognito), at: now() });
 }
 
 async function boot() {
@@ -239,7 +241,7 @@ chrome.webNavigation.onCommitted.addListener(async (d) => {
 });
 chrome.tabs.onActivated.addListener(async ({ tabId, windowId }) => {
   const tab = await getTab(tabId);
-  dispatch({ kind: 'TAB_ACTIVATED', tabId, windowId, url: tab?.url || '', title: tab?.title || '', incognito: Boolean(tab?.incognito), at: now() });
+  dispatch({ kind: 'TAB_ACTIVATED', tabId, windowId, url: tab?.pendingUrl || tab?.url || '', title: tab?.title || '', incognito: Boolean(tab?.incognito), at: now() });
 });
 chrome.tabs.onRemoved.addListener((tabId) => dispatch({ kind: 'TAB_REMOVED', tabId, at: now() }));
 chrome.windows.onFocusChanged.addListener(async (windowId) => {
