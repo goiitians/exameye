@@ -2,7 +2,7 @@ import * as store from './adapters/storage.js';
 import * as alarms from './adapters/alarms.js';
 import { registerExamScript } from './adapters/scripting.js';
 import { getWindow, getAllWindows, focusedWindowId, lastFocusedWindowId } from './adapters/windows.js';
-import { getTab, queryAllTabs, queryActiveTab } from './adapters/tabs.js';
+import { getTab, queryAllTabs, queryActiveTab, awaitLoaded } from './adapters/tabs.js';
 import { captureJpeg } from './adapters/capture.js';
 import { normalize, validate, resolved } from './core/config.js';
 import { initial, reduce } from './core/session.js';
@@ -19,6 +19,9 @@ import { renderSummaryHtml } from './core/summary-html.js';
 
 const GAP_MS = 90000;
 const SHOT_GAP_MS = 2000;
+const PAINT_WAIT_MS = 1500;
+// arm/disarm fire at onCommitted, before the new page has painted; without a wait the shot shows the previous page
+const NAV_BORN = new Set(['SESSION_ARMED', 'SESSION_DISARMED']);
 const now = () => Date.now();
 
 let queue = Promise.resolve();
@@ -124,6 +127,7 @@ async function takeShots(events) {
     if (!needsShot(ev)) continue;
     if (last.file && ev.t - last.at < SHOT_GAP_MS) { ev.shot = last.file; continue; }
     try {
+      if (NAV_BORN.has(ev.name)) await awaitLoaded(ev.tabId, PAINT_WAIT_MS);
       const windowId = ev.windowId >= 0 ? ev.windowId : await lastFocusedWindowId();
       const b64 = await captureJpeg(windowId);
       const file = shotFile(ev.t, ev.name);
