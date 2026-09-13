@@ -45,15 +45,31 @@ function arm(s, input, cfg, emit, out, { trigger, label }) {
   if (maxAt !== null) out.effects.push({ type: 'MAX_ALARM_SET', when: maxAt });
 }
 
-function disarm(s, out, emit, input, outcome, data = {}) {
-  emit('SESSION_DISARMED', { outcome, ...data }, input);
+function disarm(s, out, emit, input, outcome, trigger, data = {}) {
+  const wasClosing = s.state === 'CLOSING';
+  emit('SESSION_DISARMED', { outcome, trigger, ...data }, input);
+  out.effects.push({ type: 'MAX_ALARM_CLEAR' });
+  if (wasClosing) out.effects.push({ type: 'CLOSING_ALARM_CLEAR' });
   out.effects.push({ type: 'END', outcome, session: { ...s } });
   out.session = initial();
 }
 
+function beginTail(s, out, emit, input, cfg, outcome, trigger, label) {
+  s.outcome = outcome; s.trigger = trigger; s.triggerLabel = label ?? null; s.examEndedAt = input.at;
+  const extra = label === undefined ? {} : trigger === 'result' ? { url: label } : { label };
+  if (cfg.tailMin === 0) return disarm(s, out, emit, input, outcome, trigger, extra);
+  out.effects.push({ type: 'MAX_ALARM_CLEAR' });
+  s.state = 'CLOSING';
+  s.closingUntil = input.at + cfg.tailMin * 60000;
+  out.effects.push({ type: 'CLOSING_ALARM_SET', when: s.closingUntil });
+}
+
 function examTabNav(s, input, cfg, emit, out) {
   const cls = classify(input.url, cfg);
-  if (cls === 'result') return disarm(s, out, emit, input, 'RESULT', { url: input.url });
+  if (cls === 'result') {
+    emit('RESULT_PAGE', { url: input.url }, input);
+    return beginTail(s, out, emit, input, cfg, 'RESULT', 'result', input.url);
+  }
   if (input.url !== s.examUrl) {
     s.examUrl = input.url;
     emit('EXAM_NAV', { url: input.url }, input);
@@ -70,7 +86,10 @@ const HANDLERS = {
       out.effects.push({ type: 'ABANDON_ALARM_CLEAR' });
       return examTabNav(s, input, cfg, emit, out);
     }
-    if (classify(input.url, cfg) === 'result') return disarm(s, out, emit, input, 'RESULT', { url: input.url });
+    if (classify(input.url, cfg) === 'result') {
+      emit('RESULT_PAGE', { url: input.url }, input);
+      return beginTail(s, out, emit, input, cfg, 'RESULT', 'result', input.url);
+    }
     if (input.tabId === s.away.tabId) s.away.tabUrl = input.url;
     emit('PARALLEL_PAGE', { url: input.url, trigger: 'committed', incognito: Boolean(input.incognito) }, input);
   },
@@ -94,10 +113,19 @@ const HANDLERS = {
     emit('EXTENSION_GAP', { lastSeenAt: input.lastSeenAt, gapMs: input.at - input.lastSeenAt, reason: input.reason }, input);
   },
   ABANDON_TIMER(s, input, cfg, emit, out) {
-    if (s.tabLostAt !== null) disarm(s, out, emit, input, 'ABANDONED');
+    if (s.tabLostAt !== null) disarm(s, out, emit, input, 'ABANDONED', 'abandon');
   },
   PERIODIC(s, input, cfg, emit) {
     emit('PERIODIC', {}, input);
+  },
+  MAX_TIMER(s, input, cfg, emit, out) {
+    const ids = { ...input, tabId: s.examTabId, windowId: s.examWindowId };
+    emit('MAX_TIME_REACHED', { maxAt: s.maxAt }, ids);
+    if (s.tabLostAt !== null) {
+      out.effects.push({ type: 'ABANDON_ALARM_CLEAR' });
+      return disarm(s, out, emit, input, 'TIMED_OUT', 'max');
+    }
+    beginTail(s, out, emit, input, cfg, 'TIMED_OUT', 'max');
   },
 };
 
@@ -145,7 +173,17 @@ Object.assign(HANDLERS, {
     if (CS_DIRECT.has(input.name)) emit(input.name, data);
     else if (input.name === 'FULLSCREEN_EXIT') emit('FULLSCREEN_EXIT', { source: 'document' });
     else if (input.name === 'DEVTOOLS') emit('DEVTOOLS_OPENED', data);
-    else if (CS_PROBE.has(input.name)) out.effects.push({ type: 'PROBE' });
+    else if (input.name === 'START_CLICK') emit('START_BUTTON_CLICKED', { label: data.label });
+    else if (input.name === 'END_CLICK') {
+      emit('END_BUTTON_CLICKED', { label: data.label });
+      s.endClickAt = input.at;
+      beginTail(s, out, emit, input, cfg, 'SUBMITTED', 'button', data.label);
+    } else if (input.name === 'END_MARKER') {
+      if (s.markerSeen) return;
+      emit('END_MARKER_SEEN', { marker: data.marker });
+      s.markerSeen = true;
+      beginTail(s, out, emit, input, cfg, 'AUTO_SUBMITTED', 'marker', data.marker);
+    } else if (CS_PROBE.has(input.name)) out.effects.push({ type: 'PROBE' });
   },
   IDLE(s, input, cfg, emit) {
     if (input.state !== 'active') {

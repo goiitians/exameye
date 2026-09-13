@@ -134,3 +134,93 @@ test('TICK with missing exam tab emits EXAM_TAB_CLOSED carrying tabId', () => {
   assert.ok(ev, 'expected EXAM_TAB_CLOSED event');
   assert.equal(ev.tabId, 41);
 });
+
+const tailCfg = { ...cfg, tailMin: 5, endButton: 'Finish', endMarker: 'submitted', maxMin: 60 };
+const armCs = (tabId = 41, url) => reduce(initial(), { kind: 'NAV', tabId, windowId: 3, url: url ?? 'https://e.x/start', at: T0 }, tailCfg).session;
+const cs = (name, data, tabId = 41, at = T0 + 1000) => ({ kind: 'CS', name, data, tabId, windowId: 3, at });
+
+test('END_CLICK on the exam tab logs END_BUTTON_CLICKED and enters CLOSING as SUBMITTED', () => {
+  const r = reduce(armCs(), cs('END_CLICK', { label: 'finish' }), tailCfg);
+  assert.deepEqual(names(r), ['END_BUTTON_CLICKED']);
+  assert.equal(r.events[0].data.phase, undefined);
+  assert.equal(r.session.state, 'CLOSING');
+  assert.equal(r.session.outcome, 'SUBMITTED');
+  assert.equal(r.session.trigger, 'button');
+  assert.equal(r.session.triggerLabel, 'finish');
+  assert.equal(r.session.examEndedAt, T0 + 1000);
+  assert.equal(r.session.closingUntil, T0 + 1000 + 300000);
+  assert.equal(r.session.endClickAt, T0 + 1000);
+  assert.deepEqual(r.effects, [{ type: 'MAX_ALARM_CLEAR' }, { type: 'CLOSING_ALARM_SET', when: T0 + 1000 + 300000 }]);
+});
+
+test('END_CLICK from another tab is ignored', () => {
+  const r = reduce(armCs(), cs('END_CLICK', { label: 'finish' }, 77), tailCfg);
+  assert.deepEqual(names(r), []);
+  assert.equal(r.session.state, 'ARMED');
+});
+
+test('END_MARKER enters CLOSING as AUTO_SUBMITTED and fires once', () => {
+  let r = reduce(armCs(), cs('END_MARKER', { marker: 'submitted' }), tailCfg);
+  assert.deepEqual(names(r), ['END_MARKER_SEEN']);
+  assert.equal(r.session.state, 'CLOSING');
+  assert.equal(r.session.outcome, 'AUTO_SUBMITTED');
+  assert.equal(r.session.trigger, 'marker');
+  assert.equal(r.session.markerSeen, true);
+  r = reduce(r.session, cs('END_MARKER', { marker: 'submitted' }, 41, T0 + 2000), tailCfg);
+  assert.deepEqual(names(r), []);
+});
+
+test('result NAV on the exam tab emits RESULT_PAGE and enters CLOSING as RESULT', () => {
+  const r = reduce(armCs(), { kind: 'NAV', tabId: 41, windowId: 3, url: 'https://e.x/result/9', at: T0 + 1000 }, tailCfg);
+  assert.deepEqual(names(r), ['RESULT_PAGE']);
+  assert.equal(r.session.state, 'CLOSING');
+  assert.equal(r.session.outcome, 'RESULT');
+  assert.equal(r.session.trigger, 'result');
+  assert.equal(r.session.triggerLabel, 'https://e.x/result/9');
+  const r2 = reduce(armCs(), { kind: 'NAV', tabId: 77, windowId: 4, url: 'https://e.x/result/9', at: T0 + 1000 }, tailCfg);
+  assert.deepEqual(names(r2), ['RESULT_PAGE']);
+  assert.equal(r2.session.state, 'CLOSING');
+  assert.equal(r2.events[0].tabId, 77);
+  assert.equal(r2.events[0].windowId, 4);
+});
+
+test('MAX_TIMER with the tab present emits MAX_TIME_REACHED and enters CLOSING as TIMED_OUT', () => {
+  const s = armCs();
+  const r = reduce(s, { kind: 'MAX_TIMER', at: T0 + 3600000 }, tailCfg);
+  assert.deepEqual(names(r), ['MAX_TIME_REACHED']);
+  assert.equal(r.events[0].tabId, s.examTabId);
+  assert.equal(r.events[0].windowId, s.examWindowId);
+  assert.equal(r.events[0].data.maxAt, s.maxAt);
+  assert.equal(r.session.state, 'CLOSING');
+  assert.equal(r.session.outcome, 'TIMED_OUT');
+});
+
+test('MAX_TIMER with the tab lost ends immediately', () => {
+  let r = reduce(armCs(), { kind: 'TAB_REMOVED', tabId: 41, at: T0 + 100 }, tailCfg);
+  r = reduce(r.session, { kind: 'MAX_TIMER', at: T0 + 3600000 }, tailCfg);
+  assert.deepEqual(names(r), ['MAX_TIME_REACHED', 'SESSION_DISARMED']);
+  assert.deepEqual(r.events[1].data, { outcome: 'TIMED_OUT', trigger: 'max' });
+  assert.equal(r.session.state, 'IDLE');
+  const types = r.effects.map(e => e.type);
+  assert.ok(types.includes('ABANDON_ALARM_CLEAR'));
+  assert.ok(types.includes('END'));
+});
+
+test('tailMin 0 ends immediately on any trigger', () => {
+  const noTailCfg = { ...tailCfg, tailMin: 0 };
+  const s = reduce(initial(), { kind: 'NAV', tabId: 41, windowId: 3, url: 'https://e.x/start', at: T0 }, noTailCfg).session;
+  const r = reduce(s, cs('END_CLICK', { label: 'finish' }), noTailCfg);
+  assert.deepEqual(names(r), ['END_BUTTON_CLICKED', 'SESSION_DISARMED']);
+  assert.deepEqual(r.events[1].data, { outcome: 'SUBMITTED', trigger: 'button', label: 'finish' });
+  assert.equal(r.session.state, 'IDLE');
+  assert.equal(r.effects[0].type, 'MAX_ALARM_CLEAR');
+  assert.equal(r.effects.at(-1).type, 'END');
+});
+
+test('ABANDON_TIMER disarm carries trigger abandon and clears the max alarm', () => {
+  let r = reduce(armCs(), { kind: 'TAB_REMOVED', tabId: 41, at: T0 + 100 }, tailCfg);
+  r = reduce(r.session, { kind: 'ABANDON_TIMER', at: T0 + 600100 }, tailCfg);
+  assert.deepEqual(r.events[0].data, { outcome: 'ABANDONED', trigger: 'abandon' });
+  assert.deepEqual(r.effects, [{ type: 'MAX_ALARM_CLEAR' }, { type: 'END', outcome: 'ABANDONED', session: r.effects[1].session }]);
+  assert.equal(r.session.state, 'IDLE');
+});

@@ -46,20 +46,21 @@ test('result on the exam tab disarms with END effect carrying the session snapsh
   const armed = arm().session;
   const r = reduce(armed, nav(41, 'https://e.x/result/9', T0 + 5000), cfg);
   assert.equal(r.session.state, 'IDLE');
-  assert.deepEqual(names(r), ['SESSION_DISARMED']);
-  assert.deepEqual(r.events[0].data, { outcome: 'RESULT', url: 'https://e.x/result/9' });
-  assert.equal(r.effects[0].type, 'END');
-  assert.equal(r.effects[0].session.id, armed.id);
+  assert.deepEqual(names(r), ['RESULT_PAGE', 'SESSION_DISARMED']);
+  assert.deepEqual(r.events[0].data, { url: 'https://e.x/result/9' });
+  assert.deepEqual(r.events[1].data, { outcome: 'RESULT', trigger: 'result', url: 'https://e.x/result/9' });
+  assert.equal(r.effects.at(-1).type, 'END');
+  assert.equal(r.effects.at(-1).session.id, armed.id);
 });
 
 test('result in another tab disarms too, with ids from the tab that committed it', () => {
   const r = reduce(arm().session, nav(77, 'https://e.x/result/9', T0 + 5000, 4), cfg);
   assert.equal(r.session.state, 'IDLE');
-  assert.deepEqual(names(r), ['SESSION_DISARMED']);
-  assert.deepEqual(r.events[0].data, { outcome: 'RESULT', url: 'https://e.x/result/9' });
+  assert.deepEqual(names(r), ['RESULT_PAGE', 'SESSION_DISARMED']);
+  assert.deepEqual(r.events[1].data, { outcome: 'RESULT', trigger: 'result', url: 'https://e.x/result/9' });
   assert.equal(r.events[0].tabId, 77);
   assert.equal(r.events[0].windowId, 4);
-  assert.equal(r.effects[0].type, 'END');
+  assert.equal(r.effects.at(-1).type, 'END');
 });
 
 test('exam tab removed -> EXAM_TAB_CLOSED and abandon alarm; re-adoption by URL clears it', () => {
@@ -78,7 +79,7 @@ test('exam tab removed -> EXAM_TAB_CLOSED and abandon alarm; re-adoption by URL 
 test('re-adoption on a result URL disarms in the same reduce', () => {
   let r = reduce(arm().session, { kind: 'TAB_REMOVED', tabId: 41, at: T0 + 10 }, cfg);
   r = reduce(r.session, nav(52, 'https://e.x/result/1', T0 + 20), cfg);
-  assert.deepEqual(names(r), ['EXAM_NAV', 'SESSION_DISARMED']);
+  assert.deepEqual(names(r), ['EXAM_NAV', 'RESULT_PAGE', 'SESSION_DISARMED']);
   assert.equal(r.session.state, 'IDLE');
 });
 
@@ -86,8 +87,8 @@ test('ABANDON_TIMER ends the session only while the tab is lost', () => {
   assert.deepEqual(reduce(arm().session, { kind: 'ABANDON_TIMER', at: T0 }, cfg).events, []);
   let r = reduce(arm().session, { kind: 'TAB_REMOVED', tabId: 41, at: T0 }, cfg);
   r = reduce(r.session, { kind: 'ABANDON_TIMER', at: T0 + 600000 }, cfg);
-  assert.deepEqual(r.events[0].data, { outcome: 'ABANDONED' });
-  assert.equal(r.effects[0].type, 'END');
+  assert.deepEqual(r.events[0].data, { outcome: 'ABANDONED', trigger: 'abandon' });
+  assert.equal(r.effects.at(-1).type, 'END');
   assert.equal(r.session.state, 'IDLE');
 });
 
