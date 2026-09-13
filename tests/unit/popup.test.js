@@ -5,12 +5,15 @@ import { installFakeChrome } from './fake-chrome.js';
 import { installFakeDom } from './fake-dom.js';
 
 const chrome = installFakeChrome();
-const dom = installFakeDom(['state', 'session', 'flush', 'errors', 'counts']);
+const dom = installFakeDom(['state', 'session', 'flush', 'errors', 'counts', 'options']);
+dom.options.hidden = true;
+const opened = [];
+chrome.runtime.openOptionsPage = async () => { opened.push(1); };
 const tick = () => new Promise((r) => setTimeout(r, 5));
 
 test('popup has the live-state slots and a module script', async () => {
   const html = await readFile(new URL('../../src/popup/popup.html', import.meta.url), 'utf8');
-  for (const id of ['state', 'session', 'flush', 'errors', 'counts']) assert.match(html, new RegExp(`id="${id}"`), id);
+  for (const id of ['state', 'session', 'flush', 'errors', 'counts', 'options']) assert.match(html, new RegExp(`id="${id}"`), id);
   assert.match(html, /<script type="module" src="popup.js"><\/script>/);
 });
 
@@ -22,6 +25,17 @@ test('render: idle with nothing stored', async () => {
   assert.equal(dom.flush.textContent, 'never');
   assert.equal(dom.errors.textContent, '-');
   assert.equal(dom.counts.textContent, '(no events)');
+});
+
+test('the Open options link is shown only while the config is invalid, and opens the options page', async () => {
+  await chrome.storage.local.set({ meta: { configErrors: [{ field: 'seat', message: 'required' }] } });
+  await tick();
+  assert.equal(dom.options.hidden, false);
+  dom.options.click();
+  assert.equal(opened.length, 1);
+  await chrome.storage.local.set({ meta: { configErrors: [] } });
+  await tick();
+  assert.equal(dom.options.hidden, true);
 });
 
 test('render: armed session, counters, and every error source listed', async () => {
