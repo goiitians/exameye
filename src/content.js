@@ -31,4 +31,38 @@
   };
   window.addEventListener('resize', checkDevtools);
   checkDevtools();
+
+  const norm = (s) => String(s ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+  const parseList = (csv) => String(csv ?? '').split(',').map(norm).filter(Boolean);
+  let startLabel = '', endLabels = [], marker = '', markerSent = false;
+  const applyConfig = (cfg) => {
+    startLabel = norm(cfg?.startButton);
+    endLabels = parseList(cfg?.endButton);
+    marker = norm(cfg?.endMarker);
+    markerSent = false;
+  };
+  chrome.storage.local.get('config').then(({ config }) => applyConfig(config));
+  chrome.storage.onChanged.addListener((c, area) => { if (area === 'local' && c.config) applyConfig(c.config.newValue); });
+
+  document.addEventListener('click', (e) => {
+    const control = e.target.closest('button, a, input[type=submit], input[type=button], [role=button]');
+    if (!control) return;
+    const label = norm(control.innerText || control.value || control.getAttribute?.('aria-label') || '');
+    if (!label) return;
+    if (startLabel && label === startLabel) send('START_CLICK', { label });
+    else if (endLabels.includes(label)) send('END_CLICK', { label });
+  }, true);
+
+  let changeTimer = null;
+  const scheduleChange = () => {
+    clearTimeout(changeTimer);
+    changeTimer = setTimeout(() => {
+      send('SCREEN_CHANGED', {});
+      if (marker && !markerSent && norm(document.body?.innerText).includes(marker)) {
+        send('END_MARKER', { marker });
+        markerSent = true;
+      }
+    }, 1000);
+  };
+  new MutationObserver(scheduleChange).observe(document.documentElement, { childList: true, characterData: true, subtree: true });
 })();

@@ -1,14 +1,101 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { LABEL_VECTORS } from '../../src/core/labels.js';
 
 const L = {};
-globalThis.document = { addEventListener: (n, f) => { L['doc:' + n] = f; }, hidden: false, fullscreenElement: null };
+globalThis.document = {
+  addEventListener: (n, f) => { L['doc:' + n] = f; },
+  hidden: false, fullscreenElement: null,
+  documentElement: {},
+  body: { innerText: '' },
+};
 globalThis.window = { addEventListener: (n, f) => { L['win:' + n] = f; }, outerWidth: 1000, innerWidth: 1000, outerHeight: 800, innerHeight: 700 };
 globalThis.getSelection = () => 'abc';
 const sent = [];
-globalThis.chrome = { runtime: { sendMessage: (m, cb) => { sent.push(m); cb(); }, lastError: undefined } };
+const storageGetCalls = [];
+globalThis.chrome = {
+  runtime: { sendMessage: (m, cb) => { sent.push(m); cb(); }, lastError: undefined },
+  storage: {
+    local: { get: async (k) => { storageGetCalls.push(k); return { config: {} }; } },
+    onChanged: { addListener: (f) => { L['storage'] = f; } },
+  },
+};
+class FakeObserver {
+  constructor(cb) { this.cb = cb; }
+  observe(target, opts) { this.target = target; this.opts = opts; FakeObserver.last = this; }
+  trigger() { this.cb(); }
+}
+globalThis.MutationObserver = FakeObserver;
 await import('../../src/content.js');
 const last = () => sent.at(-1);
+const setConfig = (cfg) => L['storage']({ config: { newValue: cfg } }, 'local');
+
+test('normaliser matches core/labels on the shared vectors', () => {
+  for (const [raw, expected] of LABEL_VECTORS) {
+    if (!expected) continue;
+    setConfig({ endButton: expected });
+    const n = sent.length;
+    L['doc:click']({ target: { closest: () => ({ innerText: raw }) } });
+    assert.equal(sent.length, n + 1, raw);
+    assert.deepEqual(last(), { type: 'cs', name: 'END_CLICK', data: { label: expected } });
+  }
+  setConfig({ startButton: 'Start', endButton: 'Finish, Confirm submission', endMarker: 'Your answers have been submitted' });
+});
+
+test('click on a matching start button sends START_CLICK; end button sends END_CLICK; others send nothing', () => {
+  const click = (control) => L['doc:click']({ target: { closest: () => control } });
+  click({ innerText: ' Confirm   submission ' });
+  assert.deepEqual(last(), { type: 'cs', name: 'END_CLICK', data: { label: 'confirm submission' } });
+  let n = sent.length;
+  click({ innerText: 'Next' });
+  assert.equal(sent.length, n);
+  click(null);
+  assert.equal(sent.length, n);
+  click({ innerText: '', value: 'Finish' });
+  assert.deepEqual(last(), { type: 'cs', name: 'END_CLICK', data: { label: 'finish' } });
+  click({ innerText: '', value: '', getAttribute: () => 'Start' });
+  assert.deepEqual(last(), { type: 'cs', name: 'START_CLICK', data: { label: 'start' } });
+});
+
+test('observer is attached to documentElement with childList, characterData, subtree', () => {
+  assert.equal(FakeObserver.last.target, document.documentElement);
+  assert.deepEqual(FakeObserver.last.opts, { childList: true, characterData: true, subtree: true });
+});
+
+test('mutations are debounced to one SCREEN_CHANGED per second', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const n = sent.length;
+  FakeObserver.last.trigger();
+  FakeObserver.last.trigger();
+  FakeObserver.last.trigger();
+  t.mock.timers.tick(999);
+  assert.equal(sent.length, n);
+  t.mock.timers.tick(1);
+  assert.equal(sent.length, n + 1);
+  assert.equal(last().name, 'SCREEN_CHANGED');
+});
+
+test('END_MARKER is sent once when the marker text appears', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  document.body.innerText = 'Thank you.\nYour   answers have been SUBMITTED.';
+  FakeObserver.last.trigger();
+  t.mock.timers.tick(1000);
+  let markers = sent.filter(m => m.name === 'END_MARKER');
+  assert.equal(markers.length, 1);
+  assert.deepEqual(markers[0], { type: 'cs', name: 'END_MARKER', data: { marker: 'your answers have been submitted' } });
+  FakeObserver.last.trigger();
+  t.mock.timers.tick(1000);
+  assert.equal(sent.filter(m => m.name === 'END_MARKER').length, 1);
+  setConfig({ endMarker: '' });
+  document.body.innerText = 'Your answers have been submitted.';
+  FakeObserver.last.trigger();
+  t.mock.timers.tick(1000);
+  assert.equal(sent.filter(m => m.name === 'END_MARKER').length, 1);
+});
+
+test('config arrives from storage.local.get at load', () => {
+  assert.deepEqual(storageGetCalls, ['config']);
+});
 
 test('clipboard events report lengths only', () => {
   L['doc:copy']({});
