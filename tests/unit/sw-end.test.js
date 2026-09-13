@@ -169,3 +169,45 @@ test('replaying an old pendingEnd does not wipe a new session armed in the meant
   assert.match(afterLines[0], /^# ExamEye session/, 'the new session must keep its header line after the old end replays');
   assert.ok((await verify(afterLines)).ok, 'the new session log must still verify after the old pendingEnd replay');
 });
+
+test('closing alarm ends the session and the summary separates exam and tail phases', async () => {
+  const { session: armed } = await get('session');
+  assert.equal(armed.state, 'ARMED');
+  await chrome.storage.local.set({ config: { ...config, endButton: 'Finish', tailMin: 5 } });
+  chrome.tabs.list = [{ id: armed.examTabId, windowId: armed.examWindowId, url: 'https://e.x/start', title: 'Exam', incognito: false, active: true }];
+  const realNow = Date.now;
+  const realCapture = chrome.tabs.captureVisibleTab;
+  let current = 'X';
+  chrome.tabs.captureVisibleTab = async () => 'data:image/jpeg;base64,' + current;
+  try {
+    await sw.dispatch({ kind: 'CS', name: 'END_CLICK', tabId: armed.examTabId, windowId: armed.examWindowId, data: { label: 'finish' }, at: 1002000 });
+    const { session: closing } = await get('session');
+    assert.equal(closing.state, 'CLOSING');
+
+    current = 'X1';
+    Date.now = () => 1003000;
+    await chrome.runtime.onMessage.emit({ type: 'cs', name: 'SCREEN_CHANGED', data: {} }, { tab: { id: armed.examTabId, windowId: armed.examWindowId }, url: 'https://e.x/q/1' });
+    await sw.settled();
+
+    current = 'X2';
+    Date.now = () => 1007000;
+    await chrome.runtime.onMessage.emit({ type: 'cs', name: 'SCREEN_CHANGED', data: {} }, { tab: { id: armed.examTabId, windowId: armed.examWindowId }, url: 'https://e.x/q/1' });
+    await sw.settled();
+
+    Date.now = () => 1007500;
+    await chrome.alarms.onAlarm.emit({ name: 'closing' });
+    await sw.settled();
+  } finally { Date.now = realNow; chrome.tabs.captureVisibleTab = realCapture; }
+
+  const { session: after, meta } = await get(['session', 'meta']);
+  assert.deepEqual(after, { state: 'IDLE' });
+  assert.equal(meta.pendingEnd, null);
+  const summary = decode(byName('summary.txt').at(-1).url);
+  assert.match(summary, /Outcome: SUBMITTED/);
+  assert.match(summary, /Trigger:   end button "finish" clicked/);
+  assert.match(summary, /Post-submit tail .* 2 screenshots/);
+  const jsonl = decode(byName('events.jsonl').at(-1).url).trimEnd().split('\n').map(l => JSON.parse(l));
+  const last = jsonl.at(-1);
+  assert.equal(last.name, 'SESSION_DISARMED');
+  assert.equal(last.data.phase, 'tail');
+});
