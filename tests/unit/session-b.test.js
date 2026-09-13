@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { initial, reduce } from '../../src/core/session.js';
 import { tally } from '../../src/core/counters.js';
 
-const cfg = { startPrefix: 'https://e.x/start', examPrefix: 'https://e.x/', resultPrefix: 'https://e.x/result', seat: 'A17', subfolder: 'ExamEye', shotIntervalMin: 10, abandonMin: 10 };
+const cfg = { startPrefix: 'https://e.x/start', examPrefix: 'https://e.x/', resultPrefix: 'https://e.x/result', seat: 'A17', subfolder: 'ExamEye', shotIntervalMin: 10, abandonMin: 10, startButton: '', endButton: '', endMarker: '', maxMin: 0, tailMin: 0 };
 const T0 = 1789530302117;
 const armed = () => reduce(initial(), { kind: 'NAV', tabId: 41, windowId: 3, url: 'https://e.x/start', at: T0 }, cfg).session;
 const names = (r) => r.events.map(e => e.name);

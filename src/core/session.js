@@ -19,20 +19,30 @@ export function reduce(session, input, cfg) {
     out.events.push(makeEvent({ seq: s.seq, at: src.at, name, tabId: src.tabId, windowId: src.windowId, data }));
   };
   if (s.state === 'IDLE') {
-    if (input.kind === 'NAV' && classify(input.url, cfg) === 'start') {
-      Object.assign(s, {
-        state: 'ARMED', id: sessionId(input.at, cfg.seat), seat: cfg.seat, startedAt: input.at,
-        examTabId: input.tabId, examWindowId: input.windowId, examUrl: input.url, seq: 0,
-        lastActivityAt: input.at, tabLostAt: null, windowState: 'normal', away: freshAway(),
-      });
-      emit('SESSION_ARMED', { url: input.url }, input);
-      out.effects.push({ type: 'ABANDON_ALARM_CLEAR' });
+    if (input.kind === 'NAV' && !cfg.startButton && classify(input.url, cfg) === 'start') {
+      arm(s, input, cfg, emit, out, { trigger: 'nav' });
+    } else if (input.kind === 'CS' && input.name === 'START_CLICK' && cfg.startButton && classify(input.url, cfg) === 'start') {
+      arm(s, input, cfg, emit, out, { trigger: 'button', label: input.data.label });
     }
     return out;
   }
   s.lastActivityAt = input.at;
   HANDLERS[input.kind]?.(s, input, cfg, emit, out);
   return out;
+}
+
+function arm(s, input, cfg, emit, out, { trigger, label }) {
+  const maxAt = cfg.maxMin > 0 ? input.at + cfg.maxMin * 60000 : null;
+  Object.assign(s, {
+    state: 'ARMED', id: sessionId(input.at, cfg.seat), seat: cfg.seat, startedAt: input.at,
+    examTabId: input.tabId, examWindowId: input.windowId, examUrl: input.url, seq: 0,
+    lastActivityAt: input.at, tabLostAt: null, windowState: 'normal', away: freshAway(),
+    maxAt, endClickAt: null, markerSeen: false,
+    outcome: null, trigger: null, triggerLabel: null, examEndedAt: null, closingUntil: null,
+  });
+  emit('SESSION_ARMED', label !== undefined ? { url: input.url, trigger, label } : { url: input.url, trigger }, input);
+  out.effects.push({ type: 'ABANDON_ALARM_CLEAR' });
+  if (maxAt !== null) out.effects.push({ type: 'MAX_ALARM_SET', when: maxAt });
 }
 
 function disarm(s, out, emit, input, outcome, data = {}) {
