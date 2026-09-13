@@ -15,7 +15,12 @@
 <form id="form">
   <label>Exam start URL prefix<input name="startPrefix" placeholder="https://exam.example.com/start"></label>
   <label>Exam in-progress URL prefix (optional; blank = start page origin)<input name="examPrefix"></label>
-  <label>Result URL prefix<input name="resultPrefix" placeholder="https://exam.example.com/result"></label>
+  <label>Result URL prefix (optional if an end button or marker is set)<input name="resultPrefix" placeholder="https://exam.example.com/result"></label>
+  <label>Start button label (optional; blank = arm on start URL)<input name="startButton"></label>
+  <label>End button label(s), comma-separated (optional)<input name="endButton"></label>
+  <label>Submitted-screen marker text (optional; must appear only after submission)<input name="endMarker"></label>
+  <label>Maximum paper length (minutes; 0 = no backstop)<input name="maxMin" type="number" min="0" max="600"></label>
+  <label>Post-submit tail (minutes; 0 = end immediately)<input name="tailMin" type="number" min="0" max="60"></label>
   <label>Seat / Centre ID<input name="seat"></label>
   <label>Output subfolder under Downloads<input name="subfolder"></label>
   <label>Periodic screenshot interval (minutes)<input name="shotIntervalMin" type="number" min="1" max="60"></label>

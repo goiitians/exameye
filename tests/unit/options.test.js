@@ -52,3 +52,22 @@ test('valid submit: green Saved., config stored normalised, form re-synced to wh
   assert.equal(dom.form.elements.resultPrefix.value, 'https://e.x/result');
   assert.equal(dom.form.elements.shotIntervalMin.value, 5);
 });
+
+test('result prefix may be blank and the page saves', async () => {
+  Object.assign(dom.form.elements.resultPrefix, { value: '' });
+  Object.assign(dom.form.elements.endButton, { value: 'Finish' });
+  await dom.form.submit();
+  await tick();
+  assert.equal(dom.status.className, 'ok');
+  assert.equal(dom.status.textContent, 'Saved.');
+});
+
+test('validation error names endButton when no end trigger is set', async () => {
+  Object.assign(dom.form.elements.resultPrefix, { value: '' });
+  Object.assign(dom.form.elements.endButton, { value: '' });
+  Object.assign(dom.form.elements.endMarker, { value: '' });
+  await dom.form.submit();
+  await tick();
+  assert.equal(dom.status.className, 'err');
+  assert.match(dom.status.textContent, /^endButton: /);
+});
