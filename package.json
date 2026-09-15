@@ -7,7 +7,7 @@
   "scripts": {
     "test": "node --test 'tests/unit/**/*.test.js'",
     "test:integration": "node --test 'tests/integration/**/*.test.js'",
-    "check": "node --check src/sw.js && node --check src/content.js && node --check src/options/options.js && node --check src/popup/popup.js"
+    "check": "node --check src/sw.js && node --check src/content.js && node --check src/options/options.js && node --check src/popup/popup.js && node --check src/holder/holder.js"
   },
   "devDependencies": {
     "playwright": "^1.63.0"
