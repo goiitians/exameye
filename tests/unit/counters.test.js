@@ -40,7 +40,52 @@ test('empty input', () => {
     parallel: [],
     attribution: { screensaver: 0, idle: 0, user: 0 },
     tail: { events: 0, shots: 0 },
+    desktop: { frames: 0, asks: 0, declined: 0, failed: 0, spans: [] },
   });
+});
+
+test('tally.desktop counts frames over desktopShot and DESKTOP_FRAME shots, distinct files', () => {
+  const events = [
+    ev(1, 0, 'FOCUS_LEFT_CHROME', { desktopShot: 'screenshots/desktop/a.jpg' }),
+    ev(2, 1000, 'DESKTOP_FRAME', { n: 1 }),
+    ev(3, 2000, 'PERIODIC', { desktopShot: 'screenshots/desktop/a.jpg' }),
+  ];
+  events[1].shot = 'screenshots/desktop/b.jpg';
+  const t = tally(events);
+  assert.equal(t.desktop.frames, 2);
+});
+
+test('spans open at STARTED and close at STOPPED; the last one stays open', () => {
+  const t1 = 0, t2 = 1000, t3 = 2000;
+  const events = [
+    ev(1, t1, 'DESKTOP_CAPTURE_STARTED', { width: 1, height: 1, pickMs: 1 }),
+    ev(2, t2, 'DESKTOP_CAPTURE_STOPPED', { reason: 'stop-sharing' }),
+    ev(3, t3, 'DESKTOP_CAPTURE_STARTED', { width: 1, height: 1, pickMs: 1 }),
+  ];
+  const t = tally(events);
+  assert.deepEqual(t.desktop.spans, [
+    { from: t1, to: t2, stopped: true },
+    { from: t3, to: null, stopped: false },
+  ]);
+});
+
+test('asks, declined, failed', () => {
+  const events = [
+    ev(1, 0, 'DESKTOP_CAPTURE_STARTED', { width: 1, height: 1, pickMs: 1, resumed: true }),
+    ev(2, 1000, 'DESKTOP_CAPTURE_DECLINED', { asks: 1 }),
+    ev(3, 2000, 'DESKTOP_CAPTURE_DECLINED', { asks: 2 }),
+    ev(4, 3000, 'DESKTOP_CAPTURE_FAILED', { error: 'NotAllowedError' }),
+    ev(5, 4000, 'DESKTOP_CAPTURE_STARTED', { width: 1, height: 1, pickMs: 1 }),
+  ];
+  const t = tally(events);
+  assert.equal(t.desktop.asks, 4);
+  assert.equal(t.desktop.declined, 2);
+  assert.equal(t.desktop.failed, 1);
+});
+
+test('no desktop events → frames 0, empty spans', () => {
+  const t = tally([ev(1, 0, 'SESSION_ARMED', { url: 's' }, 1)]);
+  assert.deepEqual(t.desktop, { frames: 0, asks: 0, declined: 0, failed: 0, spans: [] });
 });
 
 test('screensaver attribution: locked state during focus-left window classifies as screensaver', () => {

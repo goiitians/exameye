@@ -9,6 +9,10 @@ export function tally(events) {
   const idleStarts = [];
   const focusIntervals = [];
   const tailShots = new Set();
+  const desktopFiles = new Set();
+  const spans = [];
+  let desktopAsks = 0, desktopDeclined = 0, desktopFailed = 0;
+  let openSpan = null;
   let tailEvents = 0;
   let open = null;
   let openIdleState = null;
@@ -20,6 +24,20 @@ export function tally(events) {
     counts[ev.name] = (counts[ev.name] || 0) + 1;
     if (ev.data.phase === 'tail') { tailEvents += 1; if (ev.shot) tailShots.add(ev.shot); }
     if (DURATION[ev.name]) { const [k, f] = DURATION[ev.name]; durations[k] += ev.data[f] || 0; }
+
+    if (ev.data.desktopShot) desktopFiles.add(ev.data.desktopShot);
+    if (ev.name === 'DESKTOP_FRAME' && ev.shot) desktopFiles.add(ev.shot);
+    if (ev.name === 'DESKTOP_CAPTURE_STARTED') {
+      if (!ev.data.resumed) desktopAsks += 1;
+      openSpan = { from: ev.t, to: null, stopped: false };
+      spans.push(openSpan);
+    } else if (ev.name === 'DESKTOP_CAPTURE_STOPPED') {
+      if (openSpan) { openSpan.to = ev.t; openSpan.stopped = true; openSpan = null; }
+    } else if (ev.name === 'DESKTOP_CAPTURE_DECLINED') {
+      desktopAsks += 1; desktopDeclined += 1;
+    } else if (ev.name === 'DESKTOP_CAPTURE_FAILED') {
+      desktopAsks += 1; desktopFailed += 1;
+    }
 
     if (ev.name === 'IDLE_START') {
       idleStarts.push({ t: ev.t, state: ev.data.state });
@@ -59,5 +77,9 @@ export function tally(events) {
     else { attribution.user += 1; durations.focusLeftMs += awayMs; }
   }
 
-  return { counts, durations, parallel: [...parallel.values()].sort((a, b) => b.focusedMs - a.focusedMs), attribution, tail: { events: tailEvents, shots: tailShots.size } };
+  return {
+    counts, durations, parallel: [...parallel.values()].sort((a, b) => b.focusedMs - a.focusedMs), attribution,
+    tail: { events: tailEvents, shots: tailShots.size },
+    desktop: { frames: desktopFiles.size, asks: desktopAsks, declined: desktopDeclined, failed: desktopFailed, spans },
+  };
 }
