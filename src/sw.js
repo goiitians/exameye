@@ -8,12 +8,12 @@ import { normalize, validate, resolved } from './core/config.js';
 import { initial, reduce } from './core/session.js';
 import { headerLine, formatLine, chainLine } from './core/logline.js';
 import { GENESIS, shortHash, verify } from './core/hashchain.js';
-import { needsShot } from './core/events.js';
+import { needsShot, needsDesktopFrame } from './core/events.js';
 import { EMPTY_TAIL, decide } from './core/tailshots.js';
-import { shotFile } from './core/ids.js';
+import { shotFile, desktopShotFile } from './core/ids.js';
 import { classify } from './core/urlmatch.js';
 import { EMPTY_DESKTOP, shouldPrompt, onHolder } from './core/desktop.js';
-import { supported, holderUrl, openHolder, showWindow, minimizeWindow, closeWindow, askHolder } from './adapters/desktop.js';
+import { supported, holderUrl, openHolder, showWindow, minimizeWindow, closeWindow, grabDesktop, pingHolder, setAway, askHolder } from './adapters/desktop.js';
 import { suppressUi, writeFile, eraseOwnCompleted } from './adapters/downloads.js';
 import { putText, putBase64, remove, dataUrl, toBase64 } from './core/sink.js';
 import { tally } from './core/counters.js';
@@ -92,6 +92,12 @@ async function dispatchNow(input) {
     await store.patchMeta({ tail: EMPTY_TAIL });
   }
   const added = await takeShots(newEvents, input.pre);
+  if (meta.desktop?.state === 'on') {
+    for (const ev of newEvents) {
+      if (ev.name === 'FOCUS_LEFT_CHROME') { await store.patchMeta({ desktopAway: EMPTY_TAIL }); await setAway(true); }
+      else if (ev.name === 'FOCUS_RETURNED') await setAway(false);
+    }
+  }
   for (const ev of newEvents) {
     const line = chainLine(formatLine(ev), lastHash);
     ev.hash = lastHash = await shortHash(line);
@@ -144,11 +150,32 @@ async function runEffects(effects, cfg, pendingEnd) {
 }
 
 async function takeShots(events, pre) {
-  if (!events.some(needsShot)) return [];
-  const { meta = {}, shots = {} } = await store.get(['meta', 'shots']);
+  const { meta = {} } = await store.get('meta');
+  const desktopOn = meta.desktop?.state === 'on';
+  const wantDesktop = events.some(e => e.name === 'DESKTOP_FRAME' || (needsDesktopFrame(e) && desktopOn));
+  if (!events.some(needsShot) && !wantDesktop) return [];
+  const { shots = {} } = await store.get('shots');
   let last = meta.lastShot || { at: 0, file: null };
   const added = [];
   for (const ev of events) {
+    if (ev.name === 'DESKTOP_FRAME') {
+      const file = desktopShotFile(ev.t, ev.name);
+      shots[file] = pre.desktop;
+      added.push({ file, b64: pre.desktop });
+      ev.shot = file;
+      continue;
+    }
+    if (needsDesktopFrame(ev) && desktopOn) {
+      const { b64, alive } = await grabDesktop();
+      if (b64) {
+        const file = desktopShotFile(ev.t, ev.name);
+        shots[file] = b64;
+        added.push({ file, b64 });
+        ev.data.desktopShot = file;
+      } else {
+        ev.data.desktopShotError = alive ? 'no frame' : 'stream not alive';
+      }
+    }
     if (!needsShot(ev)) continue;
     if (ev.name === 'SCREEN_CHANGED') {
       const file = shotFile(ev.t, ev.name);
@@ -253,8 +280,32 @@ async function desktopMessageNow(msg, sender, respond) {
     respond(sender.tab?.windowId === d.holderWindowId ? { ask: d.state === 'prompting' } : { close: true });
     return;
   }
+  if (msg.name === 'frame') { await desktopFrameNow(msg.b64); return; }
   const cfg = await loadConfig();
   await applyHolder(d, msg, cfg);
+}
+
+async function desktopFrameNow(b64) {
+  const { session, meta = {} } = await store.get(['session', 'meta']);
+  const d = meta.desktop || EMPTY_DESKTOP;
+  if (!session || (session.state !== 'ARMED' && session.state !== 'CLOSING') || d.state !== 'on' || !b64) return;
+  const at = now();
+  const hash = await shortHash(b64);
+  const { keep, tail } = decide(meta.desktopAway, { hash, at }, { cap: 40 });
+  if (!keep) return;
+  await store.patchMeta({ desktopAway: tail });
+  await dispatchNow({ kind: 'DESKTOP', name: 'FRAME', data: { n: tail.count }, at, pre: { desktop: b64 } });
+}
+
+async function desktopPingNow() {
+  const { meta = {} } = await store.get('meta');
+  const d = meta.desktop || EMPTY_DESKTOP;
+  if (d.state !== 'on') return;
+  const { alive } = await pingHolder();
+  if (!alive) {
+    const cfg = await loadConfig();
+    await applyHolder(d, { name: 'dead', error: 'ping failed' }, cfg);
+  }
 }
 
 async function holderRemovedNow(windowId) {
@@ -321,6 +372,7 @@ const finishPendingEnd = () => enqueue(finishPendingEndNow);
 
 export async function tick() {
   await finishPendingEnd();
+  await enqueue(desktopPingNow);
   const { session } = await store.get('session');
   const windows = (await getAllWindows()).map(w => ({ id: w.id, state: w.state }));
   const examTabPresent = session && session.state !== 'IDLE' && (await getTab(session.examTabId)) !== null;
