@@ -35,6 +35,9 @@ src/
   sw.js                 service worker: the only place chrome.* events are wired; orchestrates
   content.js            classic (non-module) content script, registered dynamically on exam URLs;
                         reads `config` from storage for button/marker labels (no imports)
+  holder/holder.html, holder.js
+                        extension page in its own popup window: requests AND consumes the desktop
+                        stream, holds it, answers frame requests (§6a); module page, no core imports
   core/                 PURE modules — no chrome.*, no DOM; fully unit-tested
     urlmatch.js         prefix matching, prefix → match pattern, URL classification
     config.js           defaults, normalize, validate, effectiveExamPrefix
@@ -42,6 +45,7 @@ src/
     ids.js              timestamps, session id, screenshot file names
     events.js           event catalogue, needsShot(), makeEvent()
     tailshots.js        post-submit tail screenshot keep/drop decision (hash dedupe, min gap, cap)
+    desktop.js          desktop capture state (`meta.desktop`): transitions, prompt gating, popup line
     session.js          session state machine reducer
     hashchain.js        SHA-256 short hash, chain verification
     logline.js          log.txt line grammar (header, event lines, chained lines)
@@ -55,6 +59,7 @@ src/
     capture.js          captureVisibleTab → base64 JPEG
     downloads.js        download(data URL), UI suppression, erase-on-complete
     scripting.js        (re)register the content script from config
+    desktop.js          holder window open/show/minimise/close; holder messages (ask/grab/ping/away)
   options/options.html, options.js
   popup/popup.html, popup.js
 tests/
@@ -91,6 +96,11 @@ Components:
   The SW reacts to `storage.onChanged` by re-registering the content script and the periodic alarm.
 - **Popup** — read-only live view of `session`, `events` tally, `meta.lastFlushAt`, config errors;
   refreshes on `storage.onChanged`.
+- **Holder window (`src/holder/`)** — one small extension popup window the SW opens for desktop
+  capture (§6a). The page calls `chrome.desktopCapture.chooseDesktopMedia` itself, consumes the
+  stream id with `getUserMedia`, keeps the stream for the rest of the browser session and answers
+  `grab`/`ping`/`away`/`ask` messages from the SW. The SW never calls `chooseDesktopMedia`. Its
+  own window/tab activity is filtered out of the reducer inputs by window id and holder URL.
 - **Offscreen document — not used.** The only reason to want one would be `URL.createObjectURL`
   for blob: URLs instead of data: URLs. The spike verified data: URLs work from the SW with no
   page; an offscreen document would add a lifecycle to manage for no verified need. It stays the
@@ -115,6 +125,8 @@ shape via `chrome.storage.managed`; phase 1 reads only `local`).
 | `subfolder` | string | `'ExamEye'` | required; no `/`, `\`, `..`, leading/trailing spaces; max 64 chars |
 | `shotIntervalMin` | number | `10` | integer 1–60 |
 | `abandonMin` | number | `10` | integer 1–120 |
+| `desktopCapture` | string | `'on'` | `'on'` or `'off'`; whether the screen-share dialog is opened at all (§6a) |
+| `desktopRepromptMin` | number | `5` | integer 0–60; minutes between re-asks after a decline; `0` = ask once per trigger, never by timer |
 
 **Default for the open "in-progress URL" question:** when `examPrefix` is blank, the effective
 exam-domain prefix is the *origin* of `startPrefix` (`scheme://host[:port]/`). Any URL under that
@@ -167,7 +179,9 @@ turns effects into API calls.
 `WINDOW_CREATED{windowId,incognito}` · `WINDOW_REMOVED{windowId}` ·
 `CS{name,tabId,windowId,data}` · `IDLE{state}` · `DOWNLOAD{url,filename,mime}` ·
 `TICK{windows:[{id,state}], examTabPresent}` · `STARTUP{examTabs:[{tabId,windowId,url}]}` ·
-`GAP{lastSeenAt,reason}` · `ABANDON_TIMER{}` · `MAX_TIMER{}` · `CLOSING_TIMER{}` · `PERIODIC{}`.
+`GAP{lastSeenAt,reason}` · `ABANDON_TIMER{}` · `MAX_TIMER{}` · `CLOSING_TIMER{}` · `PERIODIC{}` ·
+`DESKTOP{name,data,pre?}` (§6a; `name` ∈ STARTED/DECLINED/STOPPED/FAILED/FRAME, reduced to the
+matching `DESKTOP_*` event with `data` copied through, only while ARMED/CLOSING).
 
 `NAV` is dispatched from `webNavigation.onCommitted`, `onHistoryStateUpdated` and
 `onReferenceFragmentUpdated` (frameId 0) alike, so single-page-app route changes and fragment
@@ -315,8 +329,8 @@ Field `data` per event; every event also has `seq`, `ts` (ISO 8601 UTC), `t` (ep
 | PARALLEL_PAGE | onCommitted (other tab, or exam tab navigated off-site) / onActivated | url, title?, trigger (`committed`/`activated`), incognito | yes when trigger=`activated` |
 | WINDOW_MINIMIZED | windows.onFocusChanged→windows.get; TICK poll; CS visibility PROBE | — | no |
 | WINDOW_RESTORED | same | minimizedMs | no |
-| FOCUS_LEFT_CHROME | windows.onFocusChanged (WINDOW_ID_NONE); CS blur PROBE | — | yes (best effort) |
-| FOCUS_RETURNED | windows.onFocusChanged | awayMs | no |
+| FOCUS_LEFT_CHROME | windows.onFocusChanged (WINDOW_ID_NONE); CS blur PROBE | desktopShot? (§6a) | yes (best effort) |
+| FOCUS_RETURNED | windows.onFocusChanged | awayMs, desktopShot? | no |
 | WINDOW_OPENED | windows.onCreated | windowId | yes |
 | WINDOW_CLOSED | windows.onRemoved | windowId | no |
 | INCOGNITO_WINDOW_OPENED | windows.onCreated (incognito) | windowId | yes |
@@ -329,7 +343,12 @@ Field `data` per event; every event also has `seq`, `ts` (ISO 8601 UTC), `t` (ep
 | IDLE_END | chrome.idle.onStateChanged | idleMs | no |
 | DOWNLOAD_STARTED | downloads.onCreated (not `byExtensionId===runtime.id`, and not a `data:` URL — see §14) | url, filename, mime | yes |
 | EXTENSION_GAP | SW boot / runtime.onStartup | lastSeenAt, gapMs, reason (`sw-restart`/`browser-restart`) | no |
-| PERIODIC | alarm `periodic` | — | yes |
+| PERIODIC | alarm `periodic` | desktopShot? | yes |
+| DESKTOP_CAPTURE_STARTED | holder `started` (§6a); at arm when already sharing | width, height, pickMs, resumed? | yes |
+| DESKTOP_CAPTURE_DECLINED | holder `cancelled`; holder window closed while prompting | asks | yes |
+| DESKTOP_CAPTURE_STOPPED | holder `ended`; holder window closed while on; `ping` not alive | reason (`stop-sharing`/`window-closed`/`error`), error? | yes |
+| DESKTOP_CAPTURE_FAILED | holder `failed` (`getUserMedia` rejected) | error | yes |
+| DESKTOP_FRAME | holder `frame` while focus is away, when kept (§6a) | n | desktop frame only: `shot` is the desktop file, no tab capture |
 
 ### 5a. Screensaver / lock attribution (added 2026-09-12)
 
@@ -406,6 +425,105 @@ alarm (`windows.getAll`) reconciles anything missed (e.g. restored while the SW 
   the session from ARMED to CLOSING. The 30 s `tick` remains the floor when no content script
   runs on the submitted screen (other origin).
 
+## 6a. Desktop capture (added 2026-09-15)
+
+Records what the candidate opened when focus leaves Chrome: JPEG frames of the whole screen from
+a stream the candidate grants once through Chrome's own screen-share dialog. Nothing is
+installed, no invigilator click is needed, the exam tab is never blocked. Windows first; macOS
+differs only in a one-time permission (§11). Config: `desktopCapture`, `desktopRepromptMin` (§3).
+
+**Why a holder window.** `chrome.desktopCapture.chooseDesktopMedia` fails from the service worker
+("A target tab is required"), and a target tab would bind the stream to the exam page origin and
+lose it on the next navigation. From an extension page it needs neither a target tab nor a user
+gesture, but the stream id may only be consumed by the *same* page that requested it (an
+offscreen document gets "Error starting tab capture"). So the SW opens one small extension window
+(`chrome.windows.create({ url: src/holder/holder.html, type:'popup', width:460, height:140,
+focused:true })`) and that page both requests the id (`chooseDesktopMedia(['screen'])`) and
+consumes it (`getUserMedia({ video:{ mandatory:{ chromeMediaSource:'desktop', chromeMediaSourceId,
+maxFrameRate:2 } } })`), holds the stream and answers frame requests by drawing the video onto a
+canvas (JPEG q0.5, scaled to ≤ 1280 px wide, ~60–90 KB). The SW never calls `chooseDesktopMedia`.
+It minimises the holder when the stream starts and restores it for every re-ask; one holder
+serves every ask (a second window is opened only when the first is gone). The holder's own
+`WINDOW_CREATED`/`WINDOW_REMOVED`/`NAV`/`TAB_ACTIVATED` inputs are dropped in `dispatchNow`
+(window id equals `meta.desktop.holderWindowId`, or `url` equals the holder URL) before the
+reducer sees them. The stream survives SW sleeps (alive on every 30 s tick in the spike); it
+does not survive a browser restart.
+
+**Messages.** Holder → SW `{type:'desktop', name, …}`: `ready` (page loaded; the SW answers
+`{ask, close}` — `ask` when this window is the current holder and a dialog is wanted, `close`
+when the SW does not know the window, e.g. one Chrome restored by itself), `started{width,height,
+pickMs}`, `cancelled{pickMs}`, `failed{error,pickMs}`, `ended` (video track `ended`: Stop sharing
+pressed), `frame{b64}` (away loop). SW → holder `{type:'holder', name, …}`: `ask` (stop any
+current stream, open the dialog again), `grab` → `{b64, alive}`, `ping` → `{alive}`, `away{on}`
+(start/stop posting `frame` every 10 s). All holder → SW messages are handled in one queue step.
+
+**State** (`meta.desktop`; pure transitions in `core/desktop.js`):
+`{ state, at, since, holderWindowId, asks, width, height, error, nextAskAt }`, `state` ∈ `off`
+(initial; config off; after session end) · `prompting` (dialog open) · `on` · `declined` (Cancel,
+or holder window closed while prompting) · `stopped` (Stop sharing, holder window closed while
+on, or `ping` not alive) · `error` (`getUserMedia` rejected). `at` is the last transition,
+`since` the start of the current `on` span, `asks` the dialogs shown in the current session
+(reset at arm). Popup line (`describeDesktop(desktop, frames, now)`): `on since HH:MM:SS (N
+frames)` · `asking…` · `off — declined Nx, next ask HH:MM:SS` (or `off — declined Nx` when no
+timer) · `stopped at HH:MM:SS` · `error: <message>` · `off`.
+
+**Trigger and re-prompt** (`shouldPrompt(desktop, { at, repromptMin })`; applied only when
+`config.desktopCapture === 'on'` and `chrome.desktopCapture` exists):
+- A `NAV` to the start prefix (any tab, IDLE or ARMED) and the IDLE → ARMED transition both call
+  `promptDesktop`, which opens (or re-shows and re-asks) the holder when `state` is `off`,
+  `stopped` or `error`, or `declined` with `repromptMin > 0` and `at − desktop.at ≥ repromptMin ×
+  60000`. Never while `prompting` or `on`.
+- If capture is already `on` when the session arms, the SW reduces `DESKTOP STARTED{width,
+  height, pickMs, resumed:true}` right after the arming dispatch so the session log records that
+  the screen was captured from the start.
+- Decline → `declined`, `DESKTOP_CAPTURE_DECLINED{asks}`; with `repromptMin > 0` the one-shot alarm
+  `desktopAsk` (§10) fires at `at + repromptMin × 60000` and prompts again only while the session
+  is ARMED/CLOSING and `state` is `declined` or `error`. `repromptMin = 0` asks once per trigger.
+- `ended` (Stop sharing) → `stopped`, `DESKTOP_CAPTURE_STOPPED{reason:'stop-sharing'}`, re-ask at
+  once in the same holder. Holder window closed while `on` → `STOPPED{reason:'window-closed'}`,
+  new holder at once; closed while `prompting` → treated as a decline. `failed` → `error`,
+  `DESKTOP_CAPTURE_FAILED{error}`, then the decline timer applies.
+- Liveness: every `tick` while `on` the SW sends `ping`; `alive:false` or no answer → `stopped`
+  with `reason:'error'` and an immediate re-ask.
+- Session end (`END` effect) closes the holder and sets `state:'off'` (no event: the session is
+  over). `desktopCapture` switched to `'off'` does the same at once; switched to `'on'` while
+  ARMED/CLOSING prompts at once.
+- Chrome's "is sharing your screen — Stop sharing / Hide" bar is browser UI: the extension can
+  neither hide it nor press it. Stop sharing never ends a session; no end trigger changes.
+
+**Frames** (`screenshots/desktop/<YYYYMMDD-HHMMSS>_<EVENT>.jpg`, `ids.desktopShotFile`; kept in
+`shots[file]` and enqueued exactly like tab screenshots; `needsDesktopFrame(ev)` in
+`core/events.js`), only while `state === 'on'` and the session is ARMED/CLOSING:
+- `FOCUS_LEFT_CHROME`: `takeShots` grabs one frame at once → `data.desktopShot`; then the SW resets
+  `meta.desktopAway` to `EMPTY_TAIL` and tells the holder `away{on:true}`.
+- While away the holder posts `frame{b64}` every 10 s. The SW (queue step `desktopFrame`) drops
+  it unless the session is ARMED/CLOSING and `state === 'on'`, computes `hash = shortHash(b64)`
+  and applies `tailshots.decide(meta.desktopAway, { hash, at }, { cap: 40 })` — same hash dedupe,
+  3 s minimum gap, cap 40 per away episode. Kept → `meta.desktopAway` advances and `DESKTOP
+  FRAME{n: count}` is reduced with `pre.desktop = b64`; `takeShots` files it as that event's
+  `shot` (no tab capture). Dropped → nothing recorded.
+- `FOCUS_RETURNED`: one frame → `data.desktopShot`; holder told `away{on:false}`.
+- `PERIODIC`: one frame → `data.desktopShot` (cheap; proves liveness in the log).
+- A grab with no frame records `data.desktopShotError` and keeps the event. The 2 s tab-capture
+  coalescing rule does not apply to desktop frames.
+
+**Persistence and restart.** `meta.desktop` and `meta.desktopAway` live in storage.local, so an SW
+restart changes nothing (the holder page keeps the stream). A browser restart loses the stream
+and the holder: `recover()` resets `meta.desktop` to `off` (window ids are not stable across
+restarts, so the old id is dropped, never closed) and, for an ARMED/CLOSING session, prompts once
+immediately; later re-asks follow the decline timer. A holder page Chrome restored on its own
+reports `ready` with an unknown window id and is told `{close:true}`.
+
+**Windows vs macOS.** Windows: nothing to configure. macOS: Chrome needs the Screen Recording
+permission once per machine (System Settings → Privacy & Security → Screen Recording → Chrome);
+without it `getUserMedia` succeeds and every frame is black — recorded, not detected. No code
+path branches on the OS.
+
+**Accepted limitations.** The sharing bar and its Hide / Stop sharing buttons cannot be
+controlled; a candidate can Cancel, Stop or close the holder repeatedly (each is logged with a
+tab screenshot and re-asked per the policy above); frames show the screen Chrome exposes (the
+primary screen the candidate picked); nothing here changes when a session starts or ends.
+
 ## 7. Persistence design
 
 - **Sink:** `chrome.downloads.download({ url:'data:<mime>;base64,<b64>', filename:
@@ -434,7 +552,7 @@ alarm (`windows.getAll`) reconciles anything missed (e.g. restored while the SW 
   screenshots) is mandatory, not optional.
 - **Storage layout (`chrome.storage.local`):** `config` · `session` · `events[]` · `lines[]`
   (chained log lines incl. header) · `lastHash` · `shots{}` · `pending{}` ·
-  `meta{lastSeenAt,lastFlushAt,lastFlushError,lastShot,configErrors}`.
+  `meta{lastSeenAt,lastFlushAt,lastFlushError,lastShot,configErrors,tail,desktop,desktopAway}`.
 
 ## 8. File formats
 
@@ -476,6 +594,7 @@ Started:   2026-09-12 09:15:02 (+05:30)   Ended: 2026-09-12 12:15:44   Outcome: 
 Trigger:   end button "Submit" clicked at 12:10:44   (auto-submit expected at 12:15:02)
 Duration:  03:00:42
 Log chain: OK (312 lines)
+Desktop:   on 09:15:04 - 12:15:44 (37 frames)
 
 Phases
   Exam ............. 09:15:02 - 12:10:44  47 screenshots
@@ -498,6 +617,7 @@ Parallel pages (focused time, visits)
   ...
 
 Screenshots: 54 (screenshots/)
+Desktop frames: 37 (screenshots/desktop/)
 ```
 
 `Trigger:` is rendered by `describeOutcome(session)` (`core/summary-text.js`, shared with the HTML
@@ -509,14 +629,27 @@ when `session.maxAt` is set. `Ended:` is the tail end; the `Phases` block lists 
 `Ended`) each with its distinct screenshot count (`tally.tail = { events, shots }` counts events
 with `data.phase === 'tail'`). Sessions without a tail omit the tail line.
 
+`Desktop:` is rendered by `describeDesktopSummary(tally.desktop, endedAt)` (`core/summary-text.js`,
+shared with the HTML renderer) from `tally.desktop = { frames, asks, declined, failed, spans:
+[{ from, to, stopped }] }` (`frames` = distinct desktop files over `data.desktopShot` and
+`DESKTOP_FRAME.shot`; a span opens at `DESKTOP_CAPTURE_STARTED` and closes at the next
+`DESKTOP_CAPTURE_STOPPED` (`stopped:true`) or at `endedAt` (`to:null`)): `off` when there is no
+desktop event and no frame · `declined (N asks)` when nothing was ever shared · `failed: <error>`
+· otherwise `on HH:MM:SS - HH:MM:SS` per span, joined as `on A - B, stopped at B, re-shared C - D`,
+then ` (N frames)`, then `; declined Nx` when declines happened between spans. The
+`Desktop frames:` line is omitted when `frames` is 0.
+
 ### summary.html
 
 Single self-contained page, no external resources, no scripts: header block (same facts as
 summary.txt, including the Trigger row and a Phases table), counters table, time-away table,
-parallel-page table, timeline table (one row per event: time, name, key fields, thumbnail link;
-tail-phase rows are visible by their `phase:"tail"` data key), and a screenshots section with each JPEG as
-`<img src="data:image/jpeg;base64,…">` (inline variant) or `<img src="screenshots/<file>">`
-(linked variant). All text is HTML-escaped by the renderer (`escapeHtml`).
+parallel-page table, a Desktop capture section (the `Desktop:` status line and a table of the
+`DESKTOP_*` events: time, event, details), timeline table (one row per event: time, name, key
+fields, thumbnail link, desktop-frame link from `data.desktopShot` or a `DESKTOP_FRAME`'s `shot`;
+tail-phase rows are visible by their `phase:"tail"` data key), and a screenshots section listing
+tab screenshots and desktop frames alike, each JPEG as `<img src="data:image/jpeg;base64,…">`
+(inline variant) or `<img src="screenshots/<file>">` (linked variant). All text is HTML-escaped by
+the renderer (`escapeHtml`).
 
 ## 9. Permissions & manifest
 
@@ -528,7 +661,7 @@ tail-phase rows are visible by their `phase:"tail"` data key), and a screenshots
   "description": "Records browser activity during an online exam. Records only; never blocks.",
   "minimum_chrome_version": "120",
   "permissions": ["tabs", "webNavigation", "alarms", "storage", "unlimitedStorage",
-                  "downloads", "downloads.ui", "idle", "scripting"],
+                  "downloads", "downloads.ui", "idle", "scripting", "desktopCapture"],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "src/sw.js", "type": "module" },
   "options_page": "src/options/options.html",
@@ -538,8 +671,9 @@ tail-phase rows are visible by their `phase:"tail"` data key), and a screenshots
 ```
 Additions over the brief's expected list, with reasons: `scripting` (required by
 `registerContentScripts`, which the brief mandates); `unlimitedStorage` (screenshots retained in
-storage.local for summary.html exceed the 10 MB default quota). `windows` needs no permission
-entry. `incognito: spanning` lets the one SW see incognito windows once "Allow in Incognito" is
+storage.local for summary.html exceed the 10 MB default quota); `desktopCapture` (the holder
+page's `chooseDesktopMedia`, §6a; the holder is an extension page opened by the extension itself,
+so no `web_accessible_resources` entry is needed). `windows` needs no permission entry. `incognito: spanning` lets the one SW see incognito windows once "Allow in Incognito" is
 enabled.
 
 Content script registration (`adapters/scripting.js`): on boot and on config change,
@@ -559,6 +693,7 @@ fragment and appends `*` to the path (`https://exam.example.com/start?x=1` →
 | `abandon` | `when: tabLostAt + abandonMin*60000` (one-shot) | `ABANDON_TIMER` |
 | `max` | `when: startedAt + maxMin*60000` (one-shot, only when `maxMin>0`; cleared at tail start / disarm) | `MAX_TIMER` |
 | `closing` | `when: closingUntil` (one-shot; re-created on `END_CLICK` in CLOSING; cleared at disarm) | `CLOSING_TIMER` |
+| `desktopAsk` | `when: desktop.at + desktopRepromptMin*60000` (one-shot; set on decline/failure when `desktopRepromptMin>0`; cleared when the stream starts and at session end) | `promptDesktop` while ARMED/CLOSING and `meta.desktop.state` is `declined`/`error` (§6a) |
 
 ## 11. Chrome vs Edge differences
 
@@ -570,9 +705,14 @@ fragment and appends `*` to the path (`https://exam.example.com/start?x=1` →
 | `downloads.setUiOptions` | Chrome 105+ | Supported in Edge ≥ 105 per Edge API support list; call is try/catch-wrapped — if unsupported the flyout shows; nothing else breaks |
 | Sleeping tabs / efficiency mode | Memory Saver discards background tabs | Edge sleeping tabs may discard the exam tab when it is not active; discarded tab keeps its id, `tabs.onUpdated` reload re-injects the content script. Centre checklist: add exam site to "never sleep" list |
 | `chrome.*` namespace | native | `chrome.*` available; no `browser.*` needed |
+| `chrome.desktopCapture` | native screen picker; `--auto-select-desktop-capture-source` auto-accepts it (harness) | same API and permission name; Edge shows its own picker dialog — confirm during the centre dry run |
 | Minimum version | 120 (alarms floor, `unlimitedStorage`) | 120 |
 
 Nothing in the code branches on the browser.
+
+Operating systems (desktop capture, §6a): Windows needs nothing. macOS needs the Screen Recording
+permission for the browser once per machine; without it frames are black, not missing. Nothing
+in the code branches on the OS either.
 
 ## 12. Testing strategy
 
@@ -587,7 +727,10 @@ Nothing in the code branches on the browser.
   `idle`, `downloads` (download → records call, resolves id; onCreated/onChanged; erase;
   setUiOptions), `scripting`. Each `onX` is `{addListener, emit}`. Adapter and `sw.js` tests import
   the fake, then the module, then `emit` events and assert on `chrome.storage.local` contents and
-  the recorded download calls.
+  the recorded download calls. For desktop capture the fake also provides `runtime.sendMessage`
+  (recorded; a test-installed responder answers `grab`/`ping`), `runtime.getURL`,
+  `windows.create/update/remove` (emitting `onCreated`/`onRemoved`) and an opt-in
+  `chrome.desktopCapture` object (absent by default, so existing SW tests never prompt).
 
 ### Integration (`npm run test:integration` → `node --test tests/integration/`)
 
@@ -603,6 +746,13 @@ Nothing in the code branches on the browser.
 - Scenarios: arm on start page → `session.state==='ARMED'` and `log.txt` exists; open second tab
   → `TAB_SWITCH`/`PARALLEL_PAGE` events and a screenshot file; navigate exam tab to result →
   IDLE, `summary.txt`, `summary.html`, `events.jsonl` present, log chain verifies.
+- Desktop capture scenario: `launch(config, { args: ['--auto-select-desktop-capture-source=Entire
+  screen'] })` makes the picker auto-accept; the test asserts `DESKTOP_CAPTURE_STARTED`, a
+  `desktopShot` path on a forced `PERIODIC` (the alarm is re-created from the worker with a
+  near-future `when`; unpacked extensions are exempt from the 30 s floor) and the JPEG download
+  for that path — never pixel content (Playwright's Chromium has no Screen Recording permission
+  on the dev Mac, so frames may be black). The native picker cannot be dismissed by Playwright,
+  so the decline path is unit-tested only. Every other scenario sets `desktopCapture:'off'`.
 - Requires `playwright` as a devDependency and the bundled Chromium
   (`npx playwright install chromium`).
 
@@ -613,7 +763,7 @@ what files to expect.
 
 ## 13. Out of scope (phase 1)
 
-Naming other apps/browsers (only "focus left Chrome"); desktop/OS-wide screenshots; webcam;
+Naming other apps/browsers (only "focus left Chrome"); webcam;
 blocking anything; server upload; folder picker / File System Access; `storage.managed`
 consumption (shape is compatible, reading it is not wired); offscreen document; MV3 tab-discard
 recovery beyond re-injection on reload.
@@ -652,6 +802,25 @@ recovery beyond re-injection on reload.
     being captured, another end click resets the timer) and through the marker not appearing; a
     button click alone cannot distinguish "submitted" from "cancelled". Configure the *confirm*
     button's label as the end button where the platform has one.
+12. **Sharing bar, Hide, Stop sharing, holder window (§6a).** Chrome's "is sharing your screen"
+    bar is browser UI an extension cannot hide or press; the candidate can Stop sharing, Cancel the
+    dialog, or close the minimised holder window at any time. Each is logged
+    (`DESKTOP_CAPTURE_STOPPED`/`DECLINED` with a tab screenshot) and re-asked per the policy; a
+    candidate who declines every ask produces a log full of declines and no frames, and the
+    invigilator sees it in the popup line. Stop sharing never ends a session.
+13. **Black frames without macOS Screen Recording permission.** `getUserMedia` succeeds and every
+    frame is black; the extension cannot detect it. The centre dry run (docs/centre-setup.md) must
+    open `summary.html` and look at a frame. The dev Mac's Playwright Chromium has the same
+    limitation, so integration tests assert on events and files only.
+14. **Desktop frame volume.** Up to 40 frames per away episode plus one per `PERIODIC` and per
+    `FOCUS_*` event, ~60–90 KB each, all retained in `shots{}` for the inline `summary.html`. A
+    candidate who leaves Chrome many times can push `summary.html` past what a data: download
+    accepts; the linked fallback (§7) covers it. No total cap in this phase.
+15. **Holder window focus churn.** Opening/showing the holder moves window focus inside Chrome;
+    `FOCUS` inputs for the holder are harmless (still Chrome) and its `NAV`/`TAB_ACTIVATED`/
+    `WINDOW_*` inputs are filtered by id and URL, but any transient `WINDOW_ID_NONE` Chrome emits
+    while switching windows is subject to the same spurious-FOCUS_LEFT risk the exam window
+    already has.
 
 - **`data:`-URL downloads are not logged.** The extension's own file writes are `data:` downloads, and
   under DevTools/CDP download overrides `byExtensionId` is undefined for them, which produced an
