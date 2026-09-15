@@ -81,6 +81,12 @@ test('cancel sends cancelled with pickMs', async () => {
   const cancelled = h.sent.find(m => m.name === 'cancelled');
   assert.ok(cancelled);
   assert.equal(typeof cancelled.pickMs, 'number');
+  assert.match(h.dom.msg.textContent, /not started/i);
+});
+
+test('holder.html tells the candidate to click the screen preview, then Share', async () => {
+  const html = readFileSync(new URL('../../src/holder/holder.html', import.meta.url), 'utf8');
+  assert.match(html, /click the screen preview, then <b>Share<\/b>/i);
 });
 
 test('the stream id is consumed by getUserMedia with chromeMediaSource desktop; started carries width/height', async () => {
@@ -96,6 +102,7 @@ test('the stream id is consumed by getUserMedia with chromeMediaSource desktop; 
   await flush();
   const started = h.sent.find(m => m.name === 'started');
   assert.ok(started);
+  assert.match(h.dom.msg.textContent, /recording/i);
   assert.equal(started.width, 1920);
   assert.equal(started.height, 1080);
 });

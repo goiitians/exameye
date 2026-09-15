@@ -57,7 +57,7 @@ Windows needs nothing. macOS: System Settings -> Privacy & Security -> Screen Re
 ## 6. Dry run (10 minutes)
 1. Open the exam start URL in a new tab. Click the ExamEye toolbar icon: popup "State" must show `ARMED` and "Session" a session id.
    If a Start button label is configured, the popup must still show `IDLE` after the start page loads and `ARMED` only after the Start button is clicked.
-1a. If Desktop capture is `on`, the start page also opens a small "ExamEye screen capture" window and Chrome's "Choose what to share" dialog; click **Share**. The popup must show `Desktop capture: on since HH:MM:SS`. The small window minimises itself; do not close it.
+1a. If Desktop capture is `on`, the start page also opens a small "ExamEye screen capture" window and Chrome's "Share your entire screen" dialog; click the screen preview, then **Share** (Chrome enables Share only after the preview is clicked). The popup must show `Desktop capture: on since HH:MM:SS`. The small window minimises itself; do not close it.
 2. Open a second tab to any site, then return. Popup "Counters" must show `TAB_SWITCH: 1`.
 2a. If Desktop capture is `on`, click the desktop or another application for 15 s, then return to Chrome.
 3. Minimise and restore the window. Counters must show `WINDOW_MINIMIZED: 1`.
@@ -74,4 +74,4 @@ On a throw-away candidate account walk every in-paper screen and confirm the con
 - ExamEye records "focus left Chrome"; when Desktop capture is `off` it takes no desktop screenshots. It never names other applications, even when Desktop capture is `on`.
 
 ## 8. Candidate notice
-Display or read out before the paper: "Your screen is recorded during this paper. Chrome will ask you to share your screen when the exam page opens; choose Share. Do not close the small ExamEye window or press Stop sharing." Cancel and Stop sharing are logged and re-asked.
+Display or read out before the paper: "Your screen is recorded during this paper. Chrome will ask you to share your screen when the exam page opens: click the screen preview, then Share. Do not close the small ExamEye window or press Stop sharing." Cancel and Stop sharing are logged and re-asked.

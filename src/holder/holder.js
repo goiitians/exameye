@@ -1,5 +1,6 @@
 const v = document.getElementById('v');
 const c = document.getElementById('c');
+const msg = document.getElementById('msg');
 
 let stream = null;
 let awayInterval = null;
@@ -36,7 +37,7 @@ function ask() {
   const t0 = Date.now();
   chrome.desktopCapture.chooseDesktopMedia(['screen'], (streamId) => {
     const pickMs = Date.now() - t0;
-    if (!streamId) { send({ name: 'cancelled', pickMs }); return; }
+    if (!streamId) { msg.textContent = 'Screen recording not started. Continue with the exam; ExamEye will ask again.'; send({ name: 'cancelled', pickMs }); return; }
     navigator.mediaDevices.getUserMedia({
       audio: false,
       video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: streamId, maxFrameRate: 2 } },
@@ -46,6 +47,7 @@ function ask() {
       await new Promise((resolve) => { v.onloadedmetadata = resolve; });
       const [track] = s.getVideoTracks();
       track.addEventListener('ended', () => { stream = null; setAway(false); send({ name: 'ended' }); });
+      msg.textContent = 'Recording the screen for this paper. Do not close this window.';
       send({ name: 'started', width: v.videoWidth, height: v.videoHeight, pickMs });
     }).catch((e) => {
       send({ name: 'failed', error: String(e?.message || e), pickMs });
