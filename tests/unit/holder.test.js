@@ -100,13 +100,11 @@ test('the stream id is consumed by getUserMedia with chromeMediaSource desktop; 
   assert.equal(started.height, 1080);
 });
 
-test('grab answers b64 and alive; ping answers alive; no stream → b64 null, alive false', async () => {
+test('grab answers b64 and alive; no stream → b64 null, alive false', async () => {
   const h = await loadHolder({ readyResponse: { ask: true } });
   let resp;
   h.getListener()({ type: 'holder', name: 'grab' }, {}, (r) => { resp = r; });
   assert.deepEqual(resp, { b64: null, alive: false });
-  h.getListener()({ type: 'holder', name: 'ping' }, {}, (r) => { resp = r; });
-  assert.deepEqual(resp, { alive: false });
 
   h.chooseCalls[0].cb('sid-1');
   const { stream } = makeStream();
@@ -118,8 +116,6 @@ test('grab answers b64 and alive; ping answers alive; no stream → b64 null, al
   h.getListener()({ type: 'holder', name: 'grab' }, {}, (r) => { resp = r; });
   assert.equal(resp.alive, true);
   assert.equal(resp.b64, 'QUJD');
-  h.getListener()({ type: 'holder', name: 'ping' }, {}, (r) => { resp = r; });
-  assert.deepEqual(resp, { alive: true });
 });
 
 test('away on posts a frame every 10 s; away off stops it', async (t) => {

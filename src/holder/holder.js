@@ -61,7 +61,6 @@ send({ name: 'ready' }).then((r) => {
 chrome.runtime.onMessage.addListener((m, sender, respond) => {
   if (m?.type !== 'holder') return;
   if (m.name === 'grab') { respond({ b64: grab(), alive: Boolean(stream) }); return; }
-  if (m.name === 'ping') { respond({ alive: Boolean(stream) }); return; }
   if (m.name === 'away') { setAway(m.on); return; }
   if (m.name === 'ask') { ask(); return; }
 });

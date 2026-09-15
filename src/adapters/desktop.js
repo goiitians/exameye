@@ -18,9 +18,5 @@ export async function grabDesktop() {
   return (await send('grab')) ?? { b64: null, alive: false };
 }
 
-export async function pingHolder() {
-  return (await send('ping')) ?? { alive: false };
-}
-
 export const setAway = (on) => send('away', { on });
 export const askHolder = () => send('ask');

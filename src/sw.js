@@ -13,7 +13,7 @@ import { EMPTY_TAIL, decide } from './core/tailshots.js';
 import { shotFile, desktopShotFile } from './core/ids.js';
 import { classify } from './core/urlmatch.js';
 import { EMPTY_DESKTOP, shouldPrompt, onHolder } from './core/desktop.js';
-import { supported, holderUrl, openHolder, showWindow, minimizeWindow, closeWindow, grabDesktop, pingHolder, setAway, askHolder } from './adapters/desktop.js';
+import { supported, holderUrl, openHolder, showWindow, minimizeWindow, closeWindow, grabDesktop, setAway, askHolder } from './adapters/desktop.js';
 import { suppressUi, writeFile, eraseOwnCompleted } from './adapters/downloads.js';
 import { putText, putBase64, remove, dataUrl, toBase64 } from './core/sink.js';
 import { tally } from './core/counters.js';
@@ -280,9 +280,9 @@ async function desktopMessageNow(msg, sender, respond) {
     respond(sender.tab?.windowId === d.holderWindowId ? { ask: d.state === 'prompting' } : { close: true });
     return;
   }
-  if (msg.name === 'frame') { await desktopFrameNow(msg.b64); return; }
-  const cfg = await loadConfig();
-  await applyHolder(d, msg, cfg);
+  if (msg.name === 'frame') await desktopFrameNow(msg.b64);
+  else await applyHolder(d, msg, await loadConfig());
+  respond({});
 }
 
 async function desktopFrameNow(b64) {
@@ -297,15 +297,19 @@ async function desktopFrameNow(b64) {
   await dispatchNow({ kind: 'DESKTOP', name: 'FRAME', data: { n: tail.count }, at, pre: { desktop: b64 } });
 }
 
+// The holder's own 10 s away loop runs in a minimised page, which Chrome throttles to one
+// timer a minute after five minutes hidden; a frame per tick is the floor under it.
 async function desktopPingNow() {
-  const { meta = {} } = await store.get('meta');
+  const { session, meta = {} } = await store.get(['session', 'meta']);
   const d = meta.desktop || EMPTY_DESKTOP;
   if (d.state !== 'on') return;
-  const { alive } = await pingHolder();
+  const { b64, alive } = await grabDesktop();
   if (!alive) {
     const cfg = await loadConfig();
     await applyHolder(d, { name: 'dead', error: 'ping failed' }, cfg);
+    return;
   }
+  if (session?.away?.focusAt != null) await desktopFrameNow(b64);
 }
 
 async function holderRemovedNow(windowId) {

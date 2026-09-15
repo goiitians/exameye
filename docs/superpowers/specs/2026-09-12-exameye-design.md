@@ -59,7 +59,7 @@ src/
     capture.js          captureVisibleTab → base64 JPEG
     downloads.js        download(data URL), UI suppression, erase-on-complete
     scripting.js        (re)register the content script from config
-    desktop.js          holder window open/show/minimise/close; holder messages (ask/grab/ping/away)
+    desktop.js          holder window open/show/minimise/close; holder messages (ask/grab/away)
   options/options.html, options.js
   popup/popup.html, popup.js
 tests/
@@ -99,7 +99,7 @@ Components:
 - **Holder window (`src/holder/`)** — one small extension popup window the SW opens for desktop
   capture (§6a). The page calls `chrome.desktopCapture.chooseDesktopMedia` itself, consumes the
   stream id with `getUserMedia`, keeps the stream for the rest of the browser session and answers
-  `grab`/`ping`/`away`/`ask` messages from the SW. The SW never calls `chooseDesktopMedia`. Its
+  `grab`/`away`/`ask` messages from the SW. The SW never calls `chooseDesktopMedia`. Its
   own window/tab activity is filtered out of the reducer inputs by window id and holder URL.
 - **Offscreen document — not used.** The only reason to want one would be `URL.createObjectURL`
   for blob: URLs instead of data: URLs. The spike verified data: URLs work from the SW with no
@@ -346,7 +346,7 @@ Field `data` per event; every event also has `seq`, `ts` (ISO 8601 UTC), `t` (ep
 | PERIODIC | alarm `periodic` | desktopShot? | yes |
 | DESKTOP_CAPTURE_STARTED | holder `started` (§6a); at arm when already sharing | width, height, pickMs, resumed? | yes |
 | DESKTOP_CAPTURE_DECLINED | holder `cancelled`; holder window closed while prompting | asks | yes |
-| DESKTOP_CAPTURE_STOPPED | holder `ended`; holder window closed while on; `ping` not alive | reason (`stop-sharing`/`window-closed`/`error`), error? | yes |
+| DESKTOP_CAPTURE_STOPPED | holder `ended`; holder window closed while on; tick `grab` not alive | reason (`stop-sharing`/`window-closed`/`error`), error? | yes |
 | DESKTOP_CAPTURE_FAILED | holder `failed` (`getUserMedia` rejected) | error | yes |
 | DESKTOP_FRAME | holder `frame` while focus is away, when kept (§6a) | n | desktop frame only: `shot` is the desktop file, no tab capture |
 
@@ -454,14 +454,14 @@ does not survive a browser restart.
 when the SW does not know the window, e.g. one Chrome restored by itself), `started{width,height,
 pickMs}`, `cancelled{pickMs}`, `failed{error,pickMs}`, `ended` (video track `ended`: Stop sharing
 pressed), `frame{b64}` (away loop). SW → holder `{type:'holder', name, …}`: `ask` (stop any
-current stream, open the dialog again), `grab` → `{b64, alive}`, `ping` → `{alive}`, `away{on}`
+current stream, open the dialog again), `grab` → `{b64, alive}`, `away{on}`
 (start/stop posting `frame` every 10 s). All holder → SW messages are handled in one queue step.
 
 **State** (`meta.desktop`; pure transitions in `core/desktop.js`):
 `{ state, at, since, holderWindowId, asks, width, height, error, nextAskAt }`, `state` ∈ `off`
 (initial; config off; after session end) · `prompting` (dialog open) · `on` · `declined` (Cancel,
 or holder window closed while prompting) · `stopped` (Stop sharing, holder window closed while
-on, or `ping` not alive) · `error` (`getUserMedia` rejected). `at` is the last transition,
+on, or the tick `grab` not alive) · `error` (`getUserMedia` rejected). `at` is the last transition,
 `since` the start of the current `on` span, `asks` the dialogs shown in the current session
 (reset at arm). Popup line (`describeDesktop(desktop, frames, now)`): `on since HH:MM:SS (N
 frames)` · `asking…` · `off — declined Nx, next ask HH:MM:SS` (or `off — declined Nx` when no
@@ -483,8 +483,10 @@ timer) · `stopped at HH:MM:SS` · `error: <message>` · `off`.
   once in the same holder. Holder window closed while `on` → `STOPPED{reason:'window-closed'}`,
   new holder at once; closed while `prompting` → treated as a decline. `failed` → `error`,
   `DESKTOP_CAPTURE_FAILED{error}`, then the decline timer applies.
-- Liveness: every `tick` while `on` the SW sends `ping`; `alive:false` or no answer → `stopped`
-  with `reason:'error'` and an immediate re-ask.
+- Liveness and floor: every `tick` while `on` the SW sends `grab`; `alive:false` or no answer → `stopped`
+  with `reason:'error'` and an immediate re-ask. While focus is away the returned frame goes through
+  the away dedupe like a holder frame: the holder's 10 s loop is throttled to one timer a minute once
+  its window has been hidden for 5 min, so the tick is the floor under it.
 - Session end (`END` effect) closes the holder and sets `state:'off'` (no event: the session is
   over). `desktopCapture` switched to `'off'` does the same at once; switched to `'on'` while
   ARMED/CLOSING prompts at once.

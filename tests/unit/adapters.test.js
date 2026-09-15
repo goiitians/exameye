@@ -126,10 +126,9 @@ test('openHolder creates a focused 460x140 popup at the holder URL', async () =>
   } finally { chrome.windows.create = realCreate; }
 });
 
-test('grabDesktop/pingHolder fall back to not-alive when nobody answers', async () => {
+test('grabDesktop falls back to not-alive when nobody answers', async () => {
   chrome.runtime.responder = null;
   assert.deepEqual(await desktop.grabDesktop(), { b64: null, alive: false });
-  assert.deepEqual(await desktop.pingHolder(), { alive: false });
 });
 
 test('setAway and askHolder send holder messages', async () => {

@@ -22,7 +22,7 @@ chrome.windows.list = [{ id: 3, focused: true, state: 'normal' }];
 
 let current = 'DESKTOP_A';
 let alive = true;
-chrome.runtime.responder = (m) => m.name === 'grab' ? { b64: current, alive: true } : m.name === 'ping' ? { alive } : undefined;
+chrome.runtime.responder = (m) => m.name === 'grab' ? { b64: alive ? current : null, alive } : undefined;
 
 let captureCalls = 0;
 const realCapture = chrome.tabs.captureVisibleTab.bind(chrome.tabs);
@@ -181,7 +181,7 @@ test('frames are ignored while desktop is not on or the session is IDLE', async 
   assert.equal((await names()).length, before2, 'a frame while the session is IDLE must be ignored');
 });
 
-test('tick ping not alive → STOPPED{reason:error} and a re-ask', async () => {
+test('tick grab not alive → STOPPED{reason:error} and a re-ask', async () => {
   await armAndStart();
   chrome.runtime.sent = [];
   alive = false;
@@ -192,4 +192,42 @@ test('tick ping not alive → STOPPED{reason:error} and a re-ask', async () => {
   assert.equal(ev.name, 'DESKTOP_CAPTURE_STOPPED');
   assert.deepEqual(ev.data, { reason: 'error', error: 'ping failed' });
   assert.ok(chrome.runtime.sent.some(m => m.type === 'holder' && m.name === 'ask'));
+});
+
+test('tick grabs a desktop frame while focus is away (floor under a throttled holder loop)', async () => {
+  const holderId = (await desktop()).holderWindowId;
+  await holderMsg({ name: 'started', width: 1920, height: 1080, pickMs: 100 }, holderId);
+  await settle();
+  chrome.windows.list = [{ id: 3, focused: false, state: 'normal' }];
+  await chrome.windows.onFocusChanged.emit(-1);
+  await settle();
+  assert.notEqual((await get('session')).session.away.focusAt, null);
+  current = 'TICK_FRAME_1';
+  const before = (await names()).filter(n => n === 'DESKTOP_FRAME').length;
+  await sw.tick();
+  await settle();
+  const frames = (await get('events')).events.filter(e => e.name === 'DESKTOP_FRAME');
+  assert.equal(frames.length, before + 1);
+  assert.match(frames.at(-1).shot, /^screenshots\/desktop\//);
+  current = 'TICK_FRAME_1';
+  await sw.tick();
+  await settle();
+  assert.equal((await names()).filter(n => n === 'DESKTOP_FRAME').length, before + 1, 'same image is deduped');
+  await chrome.windows.onFocusChanged.emit(3);
+  await settle();
+  current = 'TICK_FRAME_2';
+  await sw.tick();
+  await settle();
+  assert.equal((await names()).filter(n => n === 'DESKTOP_FRAME').length, before + 1, 'no tick frame once focus is back');
+});
+
+test('every desktop message is answered, so the holder never waits on an open channel', async () => {
+  const holderId = (await desktop()).holderWindowId;
+  const answers = [];
+  const respond = (r) => answers.push(r);
+  await chrome.runtime.onMessage.emit({ type: 'desktop', name: 'frame', b64: 'ANSWERED' }, { tab: { id: 9, windowId: holderId } }, respond);
+  await chrome.runtime.onMessage.emit({ type: 'desktop', name: 'ended' }, { tab: { id: 9, windowId: holderId } }, respond);
+  await chrome.runtime.onMessage.emit({ type: 'desktop', name: 'ready' }, { tab: { id: 9, windowId: holderId } }, respond);
+  await settle();
+  assert.equal(answers.length, 3);
 });
