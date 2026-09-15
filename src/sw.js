@@ -12,6 +12,8 @@ import { needsShot } from './core/events.js';
 import { EMPTY_TAIL, decide } from './core/tailshots.js';
 import { shotFile } from './core/ids.js';
 import { classify } from './core/urlmatch.js';
+import { EMPTY_DESKTOP, shouldPrompt, onHolder } from './core/desktop.js';
+import { supported, holderUrl, openHolder, showWindow, minimizeWindow, closeWindow, askHolder } from './adapters/desktop.js';
 import { suppressUi, writeFile, eraseOwnCompleted } from './adapters/downloads.js';
 import { putText, putBase64, remove, dataUrl, toBase64 } from './core/sink.js';
 import { tally } from './core/counters.js';
@@ -23,6 +25,7 @@ const SHOT_GAP_MS = 2000;
 const PAINT_WAIT_MS = 1500;
 // arm/disarm fire at onCommitted, before the new page has painted; without a wait the shot shows the previous page
 const NAV_BORN = new Set(['SESSION_ARMED', 'SESSION_DISARMED', 'RESULT_PAGE']);
+const HOLDER_KINDS = new Set(['NAV', 'TAB_ACTIVATED', 'WINDOW_CREATED', 'WINDOW_REMOVED']);
 const now = () => Date.now();
 
 let queue = Promise.resolve();
@@ -51,6 +54,12 @@ async function applyConfigNow() {
   if (errors.length) return;
   await registerExamScript(resolved(cfg));
   await alarms.setPeriodic('periodic', cfg.shotIntervalMin);
+  if (cfg.desktopCapture === 'off') {
+    await closeHolderNow();
+  } else {
+    const { session } = await store.get('session');
+    if (session && (session.state === 'ARMED' || session.state === 'CLOSING')) await promptDesktopNow();
+  }
 }
 
 export const applyConfig = () => enqueue(applyConfigNow);
@@ -64,6 +73,7 @@ async function dispatchNow(input) {
   let session = st.session || initial();
   let { events = [], lines = [], lastHash = GENESIS } = st;
   const meta = st.meta || {};
+  if (HOLDER_KINDS.has(input.kind) && (input.url === holderUrl() || input.windowId === meta.desktop?.holderWindowId)) return;
   const newEvents = [];
   if (session.state !== 'IDLE' && meta.lastSeenAt && input.at - meta.lastSeenAt > GAP_MS) {
     const g = reduce(session, { kind: 'GAP', at: input.at, lastSeenAt: meta.lastSeenAt, reason: input.kind === 'STARTUP' ? 'browser-restart' : 'sw-restart' }, cfg);
@@ -111,6 +121,13 @@ async function dispatchNow(input) {
   await store.patchMeta({ lastSeenAt: input.at });
   await runEffects(r.effects, cfg, pendingEnd);
   if (newEvents.length) await flushNow();
+  if (r.session.state === 'ARMED' && session.state === 'IDLE') {
+    const { meta: m2 = {} } = await store.get('meta');
+    const d = m2.desktop || EMPTY_DESKTOP;
+    await store.patchMeta({ desktop: { ...d, asks: 0 } });
+    if (d.state === 'on') await dispatchNow({ kind: 'DESKTOP', name: 'STARTED', data: { width: d.width, height: d.height, pickMs: null, resumed: true }, at: input.at });
+    else await promptDesktopNow();
+  }
 }
 
 async function runEffects(effects, cfg, pendingEnd) {
@@ -122,7 +139,7 @@ async function runEffects(effects, cfg, pendingEnd) {
     else if (e.type === 'CLOSING_ALARM_SET') await alarms.setAt('closing', e.when);
     else if (e.type === 'CLOSING_ALARM_CLEAR') await alarms.clear('closing');
     else if (e.type === 'PROBE') setTimeout(probe, 0);
-    else if (e.type === 'END') await endSession(pendingEnd, cfg);
+    else if (e.type === 'END') { await endSession(pendingEnd, cfg); await closeHolderNow(); }
   }
 }
 
@@ -189,6 +206,78 @@ async function screenChangedNow(input) {
   if (!keep) return;
   await store.patchMeta({ tail });
   await dispatchNow({ ...input, data: { hash }, pre: { b64 } });
+}
+
+export const promptDesktop = () => enqueue(promptDesktopNow);
+
+async function promptDesktopNow() {
+  const cfg = await loadConfig();
+  if (!cfg || cfg.desktopCapture !== 'on' || !supported()) return;
+  const { meta = {} } = await store.get('meta');
+  const d = meta.desktop || EMPTY_DESKTOP;
+  if (!shouldPrompt(d, { at: now(), repromptMin: cfg.desktopRepromptMin })) return;
+  await askNow(d, cfg);
+}
+
+async function askNow(d, cfg) {
+  if (cfg.desktopCapture !== 'on') return;
+  let id = d.holderWindowId;
+  if (id !== null && (await getWindow(id))) {
+    await showWindow(id);
+    await askHolder();
+  } else {
+    id = (await openHolder()).id;
+  }
+  await store.patchMeta({ desktop: { ...d, state: 'prompting', at: now(), holderWindowId: id, asks: d.asks + 1 } });
+  await alarms.clear('desktopAsk');
+}
+
+async function applyHolder(d, msg, cfg) {
+  const r = onHolder(d, msg, { at: now(), repromptMin: cfg?.desktopRepromptMin ?? 0 });
+  await store.patchMeta({ desktop: r.desktop });
+  let reask = false;
+  for (const e of r.effects) {
+    if (e.type === 'MINIMIZE') await minimizeWindow(r.desktop.holderWindowId);
+    else if (e.type === 'ASK_ALARM_SET') await alarms.setAt('desktopAsk', e.when);
+    else if (e.type === 'ASK_ALARM_CLEAR') await alarms.clear('desktopAsk');
+    else if (e.type === 'REASK') reask = true;
+  }
+  if (r.input) await dispatchNow(r.input);
+  if (reask) await askNow(r.desktop, cfg);
+}
+
+async function desktopMessageNow(msg, sender, respond) {
+  const { meta = {} } = await store.get('meta');
+  const d = meta.desktop || EMPTY_DESKTOP;
+  if (msg.name === 'ready') {
+    respond(sender.tab?.windowId === d.holderWindowId ? { ask: d.state === 'prompting' } : { close: true });
+    return;
+  }
+  const cfg = await loadConfig();
+  await applyHolder(d, msg, cfg);
+}
+
+async function holderRemovedNow(windowId) {
+  const { meta = {} } = await store.get('meta');
+  const d = meta.desktop || EMPTY_DESKTOP;
+  if (windowId !== d.holderWindowId) return;
+  const cfg = await loadConfig();
+  await applyHolder(d, { name: 'closed' }, cfg);
+}
+
+async function closeHolderNow() {
+  const { meta = {} } = await store.get('meta');
+  const d = meta.desktop || EMPTY_DESKTOP;
+  if (d.state === 'off' && d.holderWindowId === null) return;
+  await store.patchMeta({ desktop: { ...EMPTY_DESKTOP, holderWindowId: d.holderWindowId } });
+  await alarms.clear('desktopAsk');
+  if (d.holderWindowId !== null) await closeWindow(d.holderWindowId);
+}
+
+async function desktopAskNow() {
+  const { session } = await store.get('session');
+  if (!session || session.state === 'IDLE') return;
+  await promptDesktopNow();
 }
 
 // e.events/e.lines/e.shots are a snapshot taken when pendingEnd was written (dispatch()), not
@@ -286,6 +375,8 @@ async function onNav(d) {
   if (d.frameId !== 0) return;
   const tab = await getTab(d.tabId);
   dispatch({ kind: 'NAV', tabId: d.tabId, windowId: tab?.windowId ?? -1, url: d.url, incognito: Boolean(tab?.incognito), at: now() });
+  const cfg = await loadConfig();
+  if (cfg && classify(d.url, cfg) === 'start') promptDesktop();
 }
 chrome.webNavigation.onCommitted.addListener(onNav);
 chrome.webNavigation.onHistoryStateUpdated.addListener(onNav);
@@ -300,8 +391,11 @@ chrome.windows.onFocusChanged.addListener(async (windowId) => {
   setTimeout(probeWindow, 0);
   if (windowId >= 0) await returnToWindow(windowId);
 });
-chrome.windows.onCreated.addListener((w) => dispatch({ kind: 'WINDOW_CREATED', windowId: w.id, incognito: Boolean(w.incognito), at: now() }));
-chrome.windows.onRemoved.addListener((windowId) => dispatch({ kind: 'WINDOW_REMOVED', windowId, at: now() }));
+// block body, not an implicit return: this listener must not hand back dispatch()'s promise —
+// chrome.windows.create() (openHolder) now fires onCreated synchronously from inside a running
+// queue step, and awaiting a promise chained onto that very step would deadlock.
+chrome.windows.onCreated.addListener((w) => { dispatch({ kind: 'WINDOW_CREATED', windowId: w.id, incognito: Boolean(w.incognito), at: now() }); });
+chrome.windows.onRemoved.addListener((windowId) => { dispatch({ kind: 'WINDOW_REMOVED', windowId, at: now() }); enqueue(() => holderRemovedNow(windowId)); });
 chrome.idle.onStateChanged.addListener((state) => dispatch({ kind: 'IDLE', state, at: now() }));
 chrome.downloads.onCreated.addListener((item) => {
   // own writes are data: URLs and byExtensionId is unreliable under DevTools download overrides;
@@ -309,7 +403,8 @@ chrome.downloads.onCreated.addListener((item) => {
   if (item.byExtensionId === chrome.runtime.id || item.url?.startsWith('data:')) return;
   dispatch({ kind: 'DOWNLOAD', url: item.url, filename: item.filename, mime: item.mime, at: now() });
 });
-chrome.runtime.onMessage.addListener((msg, sender) => {
+chrome.runtime.onMessage.addListener((msg, sender, respond) => {
+  if (msg?.type === 'desktop') { enqueue(() => desktopMessageNow(msg, sender, respond)); return true; }
   if (msg?.type !== 'cs' || !sender.tab) return;
   const input = { kind: 'CS', name: msg.name, data: msg.data, tabId: sender.tab.id, windowId: sender.tab.windowId, url: sender.url, at: now() };
   if (msg.name === 'SCREEN_CHANGED') screenChanged(input);
@@ -321,4 +416,5 @@ chrome.alarms.onAlarm.addListener(async (a) => {
   else if (a.name === 'abandon') dispatch({ kind: 'ABANDON_TIMER', at: now() });
   else if (a.name === 'max') dispatch({ kind: 'MAX_TIMER', at: now() });
   else if (a.name === 'closing') dispatch({ kind: 'CLOSING_TIMER', at: now() });
+  else if (a.name === 'desktopAsk') enqueue(desktopAskNow);
 });
