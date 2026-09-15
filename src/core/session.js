@@ -171,6 +171,10 @@ function windowState(s, windowId, state, at, emit) {
   s.windowState = state;
 }
 
+const DESKTOP_EVENT = {
+  STARTED: 'DESKTOP_CAPTURE_STARTED', DECLINED: 'DESKTOP_CAPTURE_DECLINED',
+  STOPPED: 'DESKTOP_CAPTURE_STOPPED', FAILED: 'DESKTOP_CAPTURE_FAILED', FRAME: 'DESKTOP_FRAME',
+};
 const CS_DIRECT = new Set(['COPY', 'CUT', 'PASTE', 'CONTEXTMENU', 'PRINT']);
 const CS_PROBE = new Set(['VISIBILITY', 'BLUR', 'FOCUS']);
 
@@ -240,6 +244,10 @@ Object.assign(HANDLERS, {
     }
   },
   DOWNLOAD(s, input, cfg, emit) { emit('DOWNLOAD_STARTED', { url: input.url, filename: input.filename, mime: input.mime }); },
+  DESKTOP(s, input, cfg, emit) {
+    const name = DESKTOP_EVENT[input.name];
+    if (name) emit(name, input.data || {});
+  },
   TICK(s, input, cfg, emit, out) {
     const w = input.windows.find(w => w.id === s.examWindowId);
     if (w) windowState(s, w.id, w.state, input.at, emit);

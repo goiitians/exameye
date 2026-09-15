@@ -318,6 +318,39 @@ test('STARTUP in CLOSING with no tab ends now', () => {
   assert.equal(r.session.state, 'IDLE');
 });
 
+const desk = (name, data, at = T0 + 1000) => ({ kind: 'DESKTOP', name, data, at });
+
+test('DESKTOP STARTED/DECLINED/STOPPED/FAILED/FRAME become DESKTOP_* events with data copied', () => {
+  const cases = [
+    ['STARTED', { width: 1920, height: 1080, pickMs: 300 }, 'DESKTOP_CAPTURE_STARTED'],
+    ['DECLINED', { asks: 2 }, 'DESKTOP_CAPTURE_DECLINED'],
+    ['STOPPED', { reason: 'stop-sharing' }, 'DESKTOP_CAPTURE_STOPPED'],
+    ['FAILED', { error: 'NotAllowedError' }, 'DESKTOP_CAPTURE_FAILED'],
+    ['FRAME', { n: 1 }, 'DESKTOP_FRAME'],
+  ];
+  for (const [name, data, eventName] of cases) {
+    const r = reduce(armed(), desk(name, data), cfg);
+    assert.deepEqual(names(r), [eventName]);
+    assert.deepEqual(r.events[0].data, data);
+    assert.equal('tabId' in r.events[0], false);
+    assert.equal('windowId' in r.events[0], false);
+    assert.equal(r.session.state, 'ARMED');
+  }
+});
+
+test('DESKTOP in CLOSING carries phase tail', () => {
+  const closing = closingSession();
+  const r = reduce(closing, desk('FRAME', { n: 1 }, T0 + 5000), tailCfg);
+  assert.deepEqual(names(r), ['DESKTOP_FRAME']);
+  assert.equal(r.events[0].data.phase, 'tail');
+});
+
+test('DESKTOP while IDLE emits nothing', () => {
+  const r = reduce(initial(), desk('STARTED', { width: 1, height: 1, pickMs: 1 }), cfg);
+  assert.deepEqual(r.events, []);
+  assert.equal(r.session.state, 'IDLE');
+});
+
 test('stale MAX_TIMER / ABANDON_TIMER in CLOSING and CLOSING_TIMER in ARMED are no-ops', () => {
   const closing = closingSession();
   assert.deepEqual(reduce(closing, { kind: 'MAX_TIMER', at: T0 + 2000 }, tailCfg).events, []);
