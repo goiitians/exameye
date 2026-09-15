@@ -43,6 +43,12 @@ export function installFakeChrome() {
       async query(q = {}) { return c.tabs.list.filter(t => (q.active === undefined || Boolean(t.active) === q.active) && (q.windowId === undefined || t.windowId === q.windowId)); },
       async get(id) { const t = c.tabs.list.find(t => t.id === id); if (!t) throw new Error('No tab with id: ' + id); return { status: 'complete', ...t }; },
       captureVisibleTab: async () => 'data:image/jpeg;base64,/9j/FAKE',
+      sent: [], responder: null,
+      async sendMessage(tabId, msg) {
+        c.tabs.sent.push({ tabId, msg });
+        if (c.tabs.responder) return c.tabs.responder(msg, tabId);
+        throw new Error('Could not establish connection');
+      },
       onActivated: evt(), onRemoved: evt(), onUpdated: evt(),
     },
     windows: {

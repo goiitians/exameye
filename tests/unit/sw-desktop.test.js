@@ -64,6 +64,19 @@ test('ready from the holder is answered ask:true; from an unknown window close:t
   assert.deepEqual(resp, { close: true });
 });
 
+test('desktop messages from a tab that is not the holder are ignored', async () => {
+  const d = await desktop();
+  assert.equal(d.state, 'prompting');
+  assert.equal(d.holderTabId, 9);
+  await chrome.runtime.onMessage.emit({ type: 'desktop', name: 'started', width: 1, height: 1, pickMs: 1 }, { tab: { id: 77, windowId: d.holderWindowId } }, () => {});
+  await settle();
+  assert.equal((await desktop()).state, 'prompting');
+  const n = (await names()).length;
+  await chrome.runtime.onMessage.emit({ type: 'desktop', name: 'frame', b64: 'QUJD' }, { tab: { id: 77, windowId: 5 } }, () => {});
+  await settle();
+  assert.equal((await names()).length, n);
+});
+
 test('started: on, minimised, DESKTOP_CAPTURE_STARTED with a tab shot, desktopAsk cleared', async () => {
   const holderId = (await desktop()).holderWindowId;
   const armedAt = (await get('meta')).meta.lastShot.at;
@@ -102,10 +115,10 @@ test('cancelled: declined, DECLINED{asks:1}, alarm at +5 min; a start NAV inside
   assert.deepEqual(ev.data, { asks: beforeAsks });
   assert.equal(chrome.alarms.alarms.desktopAsk.when, d.at + 300000);
 
-  chrome.runtime.sent = [];
+  chrome.tabs.sent = [];
   await chrome.webNavigation.onCommitted.emit({ tabId: 1, frameId: 0, url: 'https://e.x/start' });
   await settle();
-  assert.ok(!chrome.runtime.sent.some(m => m.name === 'ask'), 'no re-ask inside the reprompt interval');
+  assert.ok(!chrome.tabs.sent.some(s => s.msg.name === 'ask'), 'no re-ask inside the reprompt interval');
 
   const realNow = Date.now;
   Date.now = () => d.at + 300000;
@@ -113,7 +126,7 @@ test('cancelled: declined, DECLINED{asks:1}, alarm at +5 min; a start NAV inside
     await chrome.alarms.onAlarm.emit({ name: 'desktopAsk' });
     await settle();
   } finally { Date.now = realNow; }
-  assert.deepEqual(chrome.runtime.sent.at(-1), { type: 'holder', name: 'ask' });
+  assert.deepEqual(chrome.tabs.sent.at(-1).msg, { type: 'holder', name: 'ask' });
   const win = chrome.windows.list.find(w => w.id === holderId);
   assert.equal(win.state, 'normal');
   const d2 = await desktop();
@@ -121,11 +134,17 @@ test('cancelled: declined, DECLINED{asks:1}, alarm at +5 min; a start NAV inside
   assert.equal(d2.asks, beforeAsks + 1);
 });
 
+test('SW to holder traffic is addressed to the holder tab, never broadcast', () => {
+  assert.ok(!chrome.runtime.sent.some(m => m.type === 'holder'));
+  assert.ok(chrome.tabs.sent.length > 0);
+  assert.ok(chrome.tabs.sent.every(s => s.tabId === 9), JSON.stringify(chrome.tabs.sent.map(s => s.tabId)));
+});
+
 test('ended: STOPPED{reason:stop-sharing} then an immediate re-ask in the same window', async () => {
   const holderId = (await desktop()).holderWindowId;
   await holderMsg({ name: 'started', width: 1280, height: 720, pickMs: 100 }, holderId);
   await settle();
-  chrome.runtime.sent = [];
+  chrome.tabs.sent = [];
   await holderMsg({ name: 'ended' }, holderId);
   await settle();
   const ev = (await get('events')).events.at(-1);
@@ -134,7 +153,7 @@ test('ended: STOPPED{reason:stop-sharing} then an immediate re-ask in the same w
   const d = await desktop();
   assert.equal(d.state, 'prompting');
   assert.equal(d.holderWindowId, holderId);
-  assert.ok(chrome.runtime.sent.some(m => m.name === 'ask'));
+  assert.ok(chrome.tabs.sent.some(s => s.msg.name === 'ask'));
 });
 
 test('holder window closed while on: STOPPED{reason:window-closed} and a fresh holder window', async () => {
@@ -188,7 +207,7 @@ test('desktop messages while IDLE change meta only', async () => {
   await holderMsg({ name: 'cancelled', pickMs: 10 }, holderId);
   await settle();
   assert.deepEqual(await names(), before);
-  assert.equal((await desktop()).state, 'declined');
+  assert.equal((await desktop()).state, 'off');
 });
 
 test('session end closes the holder, clears the alarm and resets desktop to off', async () => {

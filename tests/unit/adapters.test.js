@@ -122,34 +122,34 @@ test('openHolder creates a focused 460x140 popup at the holder URL', async () =>
   try {
     const win = await desktop.openHolder();
     assert.deepEqual(calls[0], { url: chrome.runtime.getURL('src/holder/holder.html'), type: 'popup', width: 460, height: 140, focused: true });
-    assert.equal(win.type, 'popup');
+    assert.equal(chrome.windows.list.find(w => w.id === win.windowId).type, 'popup');
   } finally { chrome.windows.create = realCreate; }
 });
 
 test('grabDesktop falls back to not-alive when nobody answers', async () => {
-  chrome.runtime.responder = null;
-  assert.deepEqual(await desktop.grabDesktop(), { b64: null, alive: false });
+  chrome.tabs.responder = null;
+  assert.deepEqual(await desktop.grabDesktop(9), { b64: null, alive: false });
 });
 
 test('setAway and askHolder send holder messages', async () => {
-  chrome.runtime.sent = [];
-  chrome.runtime.responder = () => ({ ok: true });
-  await desktop.setAway(true);
-  await desktop.askHolder();
-  assert.deepEqual(chrome.runtime.sent[0], { type: 'holder', name: 'away', on: true });
-  assert.deepEqual(chrome.runtime.sent[1], { type: 'holder', name: 'ask' });
-  chrome.runtime.responder = null;
+  chrome.tabs.sent = [];
+  chrome.tabs.responder = () => ({ ok: true });
+  await desktop.setAway(9, true);
+  await desktop.askHolder(9);
+  assert.deepEqual(chrome.tabs.sent[0], { tabId: 9, msg: { type: 'holder', name: 'away', on: true } });
+  assert.deepEqual(chrome.tabs.sent[1], { tabId: 9, msg: { type: 'holder', name: 'ask' } });
+  chrome.tabs.responder = null;
 });
 
 test('showWindow restores and focuses; minimizeWindow minimises; closeWindow removes and swallows a missing id', async () => {
   const win = await desktop.openHolder();
-  await desktop.minimizeWindow(win.id);
-  assert.equal(chrome.windows.list.find(w => w.id === win.id).state, 'minimized');
-  await desktop.showWindow(win.id);
-  const w = chrome.windows.list.find(w => w.id === win.id);
+  await desktop.minimizeWindow(win.windowId);
+  assert.equal(chrome.windows.list.find(w => w.id === win.windowId).state, 'minimized');
+  await desktop.showWindow(win.windowId);
+  const w = chrome.windows.list.find(w => w.id === win.windowId);
   assert.equal(w.state, 'normal');
   assert.equal(w.focused, true);
-  await desktop.closeWindow(win.id);
-  assert.equal(chrome.windows.list.find(w => w.id === win.id), undefined);
+  await desktop.closeWindow(win.windowId);
+  assert.equal(chrome.windows.list.find(w => w.id === win.windowId), undefined);
   await assert.doesNotReject(() => desktop.closeWindow(999999));
 });

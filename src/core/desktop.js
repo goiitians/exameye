@@ -1,7 +1,7 @@
 import { fmtLocal } from './ids.js';
 
 export const EMPTY_DESKTOP = Object.freeze({
-  state: 'off', at: 0, since: null, holderWindowId: null, asks: 0,
+  state: 'off', at: 0, since: null, holderWindowId: null, holderTabId: null, asks: 0,
   width: null, height: null, error: null, nextAskAt: null,
 });
 
@@ -43,16 +43,16 @@ export function onHolder(desktop, msg, { at, repromptMin }) {
   if (msg.name === 'closed') {
     if (d.state === 'on') {
       return {
-        desktop: { ...d, state: 'stopped', at, since: null, holderWindowId: null },
+        desktop: { ...d, state: 'stopped', at, since: null, holderWindowId: null, holderTabId: null },
         input: { kind: 'DESKTOP', name: 'STOPPED', data: { reason: 'window-closed' }, at },
         effects: [{ type: 'REASK' }],
       };
     }
     if (d.state === 'prompting') {
       const r = decline(d, 'DECLINED', at, repromptMin);
-      return { ...r, desktop: { ...r.desktop, holderWindowId: null } };
+      return { ...r, desktop: { ...r.desktop, holderWindowId: null, holderTabId: null } };
     }
-    return { desktop: { ...d, holderWindowId: null, at }, input: null, effects: [] };
+    return { desktop: { ...d, holderWindowId: null, holderTabId: null, at }, input: null, effects: [] };
   }
   if (msg.name === 'dead') {
     if (d.state === 'on') {

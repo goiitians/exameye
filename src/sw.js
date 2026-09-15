@@ -95,8 +95,8 @@ async function dispatchNow(input) {
   const added = await takeShots(newEvents, input.pre);
   if (meta.desktop?.state === 'on') {
     for (const ev of newEvents) {
-      if (ev.name === 'FOCUS_LEFT_CHROME') { await store.patchMeta({ desktopAway: EMPTY_TAIL }); await setAway(true); }
-      else if (ev.name === 'FOCUS_RETURNED') await setAway(false);
+      if (ev.name === 'FOCUS_LEFT_CHROME') { await store.patchMeta({ desktopAway: EMPTY_TAIL }); await setAway(meta.desktop.holderTabId, true); }
+      else if (ev.name === 'FOCUS_RETURNED') await setAway(meta.desktop.holderTabId, false);
     }
   }
   for (const ev of newEvents) {
@@ -167,7 +167,7 @@ async function takeShots(events, pre) {
       continue;
     }
     if (needsDesktopFrame(ev) && desktopOn) {
-      const { b64, alive } = await grabDesktop();
+      const { b64, alive } = await grabDesktop(meta.desktop?.holderTabId);
       if (b64) {
         const file = desktopShotFile(ev.t, ev.name);
         shots[file] = b64;
@@ -249,14 +249,14 @@ async function promptDesktopNow() {
 
 async function askNow(d, cfg) {
   if (cfg.desktopCapture !== 'on') return;
-  let id = d.holderWindowId;
+  let { holderWindowId: id, holderTabId: tabId } = d;
   if (id !== null && (await getWindow(id))) {
     await showWindow(id);
-    await askHolder();
+    await askHolder(tabId);
   } else {
-    id = (await openHolder()).id;
+    ({ windowId: id, tabId } = await openHolder());
   }
-  await store.patchMeta({ desktop: { ...d, state: 'prompting', at: now(), holderWindowId: id, asks: d.asks + 1 } });
+  await store.patchMeta({ desktop: { ...d, state: 'prompting', at: now(), holderWindowId: id, holderTabId: tabId, asks: d.asks + 1 } });
   await alarms.clear('desktopAsk');
 }
 
@@ -277,10 +277,9 @@ async function applyHolder(d, msg, cfg) {
 async function desktopMessageNow(msg, sender, respond) {
   const { meta = {} } = await store.get('meta');
   const d = meta.desktop || EMPTY_DESKTOP;
-  if (msg.name === 'ready') {
-    respond(sender.tab?.windowId === d.holderWindowId ? { ask: d.state === 'prompting' } : { close: true });
-    return;
-  }
+  const fromHolder = d.holderTabId !== null && sender.tab?.id === d.holderTabId;
+  if (msg.name === 'ready') { respond(fromHolder ? { ask: d.state === 'prompting' } : { close: true }); return; }
+  if (!fromHolder) { respond({}); return; }
   if (msg.name === 'frame') await desktopFrameNow(msg.b64);
   else await applyHolder(d, msg, await loadConfig());
   respond({});
@@ -304,7 +303,7 @@ async function desktopPingNow() {
   const { session, meta = {} } = await store.get(['session', 'meta']);
   const d = meta.desktop || EMPTY_DESKTOP;
   if (d.state !== 'on') return;
-  const { b64, alive } = await grabDesktop();
+  const { b64, alive } = await grabDesktop(d.holderTabId);
   if (!alive) {
     const cfg = await loadConfig();
     await applyHolder(d, { name: 'dead', error: 'ping failed' }, cfg);

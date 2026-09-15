@@ -22,7 +22,7 @@ chrome.windows.list = [{ id: 3, focused: true, state: 'normal' }];
 
 let current = 'DESKTOP_A';
 let alive = true;
-chrome.runtime.responder = (m) => m.name === 'grab' ? { b64: alive ? current : null, alive } : undefined;
+chrome.tabs.responder = (m) => m.name === 'grab' ? { b64: alive ? current : null, alive } : undefined;
 
 let captureCalls = 0;
 const realCapture = chrome.tabs.captureVisibleTab.bind(chrome.tabs);
@@ -65,14 +65,14 @@ test('PERIODIC while on files a desktop frame as data.desktopShot and enqueues i
 
 test('FOCUS_LEFT_CHROME grabs, resets desktopAway and sends away on; FOCUS_RETURNED grabs and sends away off', async () => {
   await chrome.storage.local.set({ meta: { ...(await get('meta')).meta, desktopAway: { count: 5, lastHash: 'x', lastAt: 1 } } });
-  chrome.runtime.sent = [];
+  chrome.tabs.sent = [];
   for (const w of chrome.windows.list) w.focused = false;
   chrome.windows.onFocusChanged.emit(-1);
   await new Promise((r) => setTimeout(r, 650));
   await settle();
   const leftEv = (await get('events')).events.find(e => e.name === 'FOCUS_LEFT_CHROME');
   assert.ok(leftEv.data.desktopShot);
-  assert.ok(chrome.runtime.sent.some(m => m.type === 'holder' && m.name === 'away' && m.on === true));
+  assert.ok(chrome.tabs.sent.some(s => s.msg.type === 'holder' && s.msg.name === 'away' && s.msg.on === true));
   assert.deepEqual((await get('meta')).meta.desktopAway, EMPTY_TAIL);
 
   chrome.windows.list[0].focused = true;
@@ -81,7 +81,7 @@ test('FOCUS_LEFT_CHROME grabs, resets desktopAway and sends away on; FOCUS_RETUR
   const returnEv = (await get('events')).events.find(e => e.name === 'FOCUS_RETURNED');
   assert.ok(returnEv);
   assert.ok(returnEv.data.desktopShot);
-  assert.ok(chrome.runtime.sent.some(m => m.type === 'holder' && m.name === 'away' && m.on === false));
+  assert.ok(chrome.tabs.sent.some(s => s.msg.type === 'holder' && s.msg.name === 'away' && s.msg.on === false));
 });
 
 test('holder frames: first kept as DESKTOP_FRAME{n:1} with shot the desktop file; same hash dropped; within 3 s dropped; the 41st dropped', async () => {
@@ -138,8 +138,8 @@ test('holder frames: first kept as DESKTOP_FRAME{n:1} with shot the desktop file
 });
 
 test('grab without a frame records desktopShotError and keeps the event', async () => {
-  const saved = chrome.runtime.responder;
-  chrome.runtime.responder = (m) => m.name === 'grab' ? { b64: null, alive: true } : { alive: true };
+  const saved = chrome.tabs.responder;
+  chrome.tabs.responder = (m) => m.name === 'grab' ? { b64: null, alive: true } : { alive: true };
   await sw.dispatch({ kind: 'PERIODIC', at: Date.now() });
   await settle();
   let ev = (await get('events')).events.at(-1);
@@ -147,21 +147,21 @@ test('grab without a frame records desktopShotError and keeps the event', async 
   assert.equal(ev.data.desktopShotError, 'no frame');
   assert.equal(ev.data.desktopShot, undefined);
 
-  chrome.runtime.responder = () => { throw new Error('boom'); };
+  chrome.tabs.responder = () => { throw new Error('boom'); };
   await sw.dispatch({ kind: 'PERIODIC', at: Date.now() });
   await settle();
   ev = (await get('events')).events.at(-1);
   assert.equal(ev.data.desktopShotError, 'stream not alive');
-  chrome.runtime.responder = saved;
+  chrome.tabs.responder = saved;
 });
 
 test('no desktop grab is attempted while state is not on', async () => {
   const meta = (await get('meta')).meta;
   await chrome.storage.local.set({ meta: { ...meta, desktop: { ...meta.desktop, state: 'declined' } } });
-  chrome.runtime.sent = [];
+  chrome.tabs.sent = [];
   await sw.dispatch({ kind: 'PERIODIC', at: Date.now() });
   await settle();
-  assert.ok(!chrome.runtime.sent.some(m => m.name === 'grab'));
+  assert.ok(!chrome.tabs.sent.some(s => s.msg.name === 'grab'));
   await chrome.storage.local.set({ meta: { ...meta, desktop: { ...meta.desktop, state: 'on' } } });
 });
 
@@ -186,7 +186,7 @@ test('frames are ignored while desktop is not on or the session is IDLE', async 
 
 test('tick grab not alive → STOPPED{reason:error} and a re-ask', async () => {
   await armAndStart();
-  chrome.runtime.sent = [];
+  chrome.tabs.sent = [];
   alive = false;
   try {
     await sw.tick();
@@ -194,7 +194,7 @@ test('tick grab not alive → STOPPED{reason:error} and a re-ask', async () => {
   const ev = (await get('events')).events.at(-1);
   assert.equal(ev.name, 'DESKTOP_CAPTURE_STOPPED');
   assert.deepEqual(ev.data, { reason: 'error', error: 'ping failed' });
-  assert.ok(chrome.runtime.sent.some(m => m.type === 'holder' && m.name === 'ask'));
+  assert.ok(chrome.tabs.sent.some(s => s.msg.type === 'holder' && s.msg.name === 'ask'));
 });
 
 test('tick grabs a desktop frame while focus is away (floor under a throttled holder loop)', async () => {

@@ -111,6 +111,14 @@ test('describeDesktop renders every state', () => {
   assert.equal(describeDesktop({ ...EMPTY_DESKTOP, state: 'off' }, 0), 'off');
 });
 
+test('closed clears holderTabId as well as holderWindowId', () => {
+  const on = { ...EMPTY_DESKTOP, state: 'on', at: T0, since: T0, holderWindowId: 7, holderTabId: 9, asks: 1 };
+  const r = onHolder(on, { name: 'closed' }, { at: T0 + 1, repromptMin: 5 });
+  assert.equal(r.desktop.holderWindowId, null);
+  assert.equal(r.desktop.holderTabId, null);
+  assert.equal(EMPTY_DESKTOP.holderTabId, null);
+});
+
 test('onHolder does not mutate its input', () => {
   const on = { ...EMPTY_DESKTOP, state: 'on', at: T0, since: T0 };
   const before = structuredClone(on);

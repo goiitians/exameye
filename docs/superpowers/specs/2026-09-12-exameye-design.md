@@ -458,9 +458,13 @@ pickMs}`, `cancelled{pickMs}`, `failed{error,pickMs}`, `ended` (video track `end
 pressed), `frame{b64}` (away loop). SW → holder `{type:'holder', name, …}`: `ask` (stop any
 current stream, open the dialog again), `grab` → `{b64, alive}`, `away{on}`
 (start/stop posting `frame` every 10 s). All holder → SW messages are handled in one queue step.
+SW → holder messages are sent with `chrome.tabs.sendMessage(meta.desktop.holderTabId, …)`, never
+broadcast; holder → SW messages other than `ready` are accepted only when `sender.tab.id ===
+meta.desktop.holderTabId`, and `ready` from any other tab is answered `{close:true}`.
 
 **State** (`meta.desktop`; pure transitions in `core/desktop.js`):
-`{ state, at, since, holderWindowId, asks, width, height, error, nextAskAt }`, `state` ∈ `off`
+`{ state, at, since, holderWindowId, holderTabId, asks, width, height, error, nextAskAt }`
+(`holderTabId`: tab id of the holder page; `null` when no holder exists), `state` ∈ `off`
 (initial; config off; after session end) · `prompting` (dialog open) · `on` · `declined` (Cancel,
 or holder window closed while prompting) · `stopped` (Stop sharing, holder window closed while
 on, or the tick `grab` not alive) · `error` (`getUserMedia` rejected). `at` is the last transition,
@@ -811,7 +815,8 @@ recovery beyond re-injection on reload.
     dialog, or close the minimised holder window at any time. Each is logged
     (`DESKTOP_CAPTURE_STOPPED`/`DECLINED` with a tab screenshot) and re-asked per the policy; a
     candidate who declines every ask produces a log full of declines and no frames, and the
-    invigilator sees it in the popup line. Stop sharing never ends a session.
+    invigilator sees it in the popup line. Stop sharing never ends a session. A second holder page
+    opened by the candidate cannot answer for the real one.
 13. **Black frames without macOS Screen Recording permission.** `getUserMedia` succeeds and every
     frame is black; the extension cannot detect it. The centre dry run (docs/centre-setup.md) must
     open `summary.html` and look at a frame. The dev Mac's Playwright Chromium has the same
