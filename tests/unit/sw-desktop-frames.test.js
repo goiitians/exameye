@@ -66,13 +66,16 @@ test('PERIODIC while on files a desktop frame as data.desktopShot and enqueues i
 test('FOCUS_LEFT_CHROME grabs, resets desktopAway and sends away on; FOCUS_RETURNED grabs and sends away off', async () => {
   await chrome.storage.local.set({ meta: { ...(await get('meta')).meta, desktopAway: { count: 5, lastHash: 'x', lastAt: 1 } } });
   chrome.runtime.sent = [];
-  await chrome.windows.onFocusChanged.emit(-1);
+  for (const w of chrome.windows.list) w.focused = false;
+  chrome.windows.onFocusChanged.emit(-1);
+  await new Promise((r) => setTimeout(r, 650));
   await settle();
   const leftEv = (await get('events')).events.find(e => e.name === 'FOCUS_LEFT_CHROME');
   assert.ok(leftEv.data.desktopShot);
   assert.ok(chrome.runtime.sent.some(m => m.type === 'holder' && m.name === 'away' && m.on === true));
   assert.deepEqual((await get('meta')).meta.desktopAway, EMPTY_TAIL);
 
+  chrome.windows.list[0].focused = true;
   await chrome.windows.onFocusChanged.emit(3);
   await settle();
   const returnEv = (await get('events')).events.find(e => e.name === 'FOCUS_RETURNED');
@@ -198,8 +201,9 @@ test('tick grabs a desktop frame while focus is away (floor under a throttled ho
   const holderId = (await desktop()).holderWindowId;
   await holderMsg({ name: 'started', width: 1920, height: 1080, pickMs: 100 }, holderId);
   await settle();
-  chrome.windows.list = [{ id: 3, focused: false, state: 'normal' }];
-  await chrome.windows.onFocusChanged.emit(-1);
+  for (const w of chrome.windows.list) w.focused = false;
+  chrome.windows.onFocusChanged.emit(-1);
+  await new Promise((r) => setTimeout(r, 650));
   await settle();
   assert.notEqual((await get('session')).session.away.focusAt, null);
   current = 'TICK_FRAME_1';
@@ -213,6 +217,7 @@ test('tick grabs a desktop frame while focus is away (floor under a throttled ho
   await sw.tick();
   await settle();
   assert.equal((await names()).filter(n => n === 'DESKTOP_FRAME').length, before + 1, 'same image is deduped');
+  chrome.windows.list[0].focused = true;
   await chrome.windows.onFocusChanged.emit(3);
   await settle();
   current = 'TICK_FRAME_2';

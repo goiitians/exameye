@@ -23,6 +23,7 @@ import { renderSummaryHtml } from './core/summary-html.js';
 const GAP_MS = 90000;
 const SHOT_GAP_MS = 2000;
 const PAINT_WAIT_MS = 1500;
+const FOCUS_SETTLE_MS = 500;
 // arm/disarm fire at onCommitted, before the new page has painted; without a wait the shot shows the previous page
 const NAV_BORN = new Set(['SESSION_ARMED', 'SESSION_DISARMED', 'RESULT_PAGE']);
 const HOLDER_KINDS = new Set(['NAV', 'TAB_ACTIVATED', 'WINDOW_CREATED', 'WINDOW_REMOVED']);
@@ -407,8 +408,21 @@ async function probeWindow() {
   if (w) await dispatch({ kind: 'WINDOW_STATE', windowId: w.id, state: w.state, at: now() });
 }
 
+// A modal dialog (the site's alert/confirm, Chrome's share dialog) makes Chrome report "no
+// window focused" for ~200 ms and then the window again; only a loss that outlasts the settle
+// window is a real switch away — and by then the other app is on screen for the desktop frame.
+async function focusInput() {
+  const at = now();
+  let windowId = await focusedWindowId();
+  if (windowId === -1) {
+    await new Promise((r) => setTimeout(r, FOCUS_SETTLE_MS));
+    windowId = await focusedWindowId();
+  }
+  return { kind: 'FOCUS', windowId, at };
+}
+
 export async function probe() {
-  await dispatch({ kind: 'FOCUS', windowId: await focusedWindowId(), at: now() });
+  await dispatch(await focusInput());
   await probeWindow();
 }
 
@@ -445,7 +459,8 @@ chrome.tabs.onActivated.addListener(async ({ tabId, windowId }) => {
 });
 chrome.tabs.onRemoved.addListener((tabId) => dispatch({ kind: 'TAB_REMOVED', tabId, at: now() }));
 chrome.windows.onFocusChanged.addListener(async (windowId) => {
-  dispatch({ kind: 'FOCUS', windowId, at: now() });
+  if (windowId === -1) dispatch(await focusInput());
+  else dispatch({ kind: 'FOCUS', windowId, at: now() });
   setTimeout(probeWindow, 0);
   if (windowId >= 0) await returnToWindow(windowId);
 });

@@ -53,7 +53,9 @@ test('capture failure is recorded on the event, not thrown', async () => {
 });
 
 test('focus change, idle, downloads by others, windows', async () => {
-  await chrome.windows.onFocusChanged.emit(-1);
+  chrome.windows.list[0].focused = false;
+  chrome.windows.onFocusChanged.emit(-1);
+  await new Promise((r) => setTimeout(r, 650));
   await chrome.idle.onStateChanged.emit('locked');
   await chrome.downloads.onCreated.emit({ id: 5, byExtensionId: 'fake-ext-id', url: 'x', filename: 'x', mime: 'x' });
   await chrome.downloads.onCreated.emit({ id: 6, url: 'https://f.x/a.pdf', filename: '/dl/a.pdf', mime: 'application/pdf' });

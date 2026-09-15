@@ -329,7 +329,7 @@ Field `data` per event; every event also has `seq`, `ts` (ISO 8601 UTC), `t` (ep
 | PARALLEL_PAGE | onCommitted (other tab, or exam tab navigated off-site) / onActivated | url, title?, trigger (`committed`/`activated`), incognito | yes when trigger=`activated` |
 | WINDOW_MINIMIZED | windows.onFocusChanged→windows.get; TICK poll; CS visibility PROBE | — | no |
 | WINDOW_RESTORED | same | minimizedMs | no |
-| FOCUS_LEFT_CHROME | windows.onFocusChanged (WINDOW_ID_NONE); CS blur PROBE | desktopShot? (§6a) | yes (best effort) |
+| FOCUS_LEFT_CHROME | windows.onFocusChanged (WINDOW_ID_NONE); CS blur PROBE — both re-check the focused window after a 500 ms settle, because a modal dialog (the site's alert/confirm, Chrome's share dialog) reports no focus for ~200 ms and then the window again; the event keeps the time of the first observation | desktopShot? (§6a) | yes (best effort) |
 | FOCUS_RETURNED | windows.onFocusChanged | awayMs, desktopShot? | no |
 | WINDOW_OPENED | windows.onCreated | windowId | yes |
 | WINDOW_CLOSED | windows.onRemoved | windowId | no |
