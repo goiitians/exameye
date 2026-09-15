@@ -84,6 +84,14 @@ test('cancel sends cancelled with pickMs', async () => {
   assert.match(h.dom.msg.textContent, /not started/i);
 });
 
+test('the video element is rendered (1x1), never display:none — a hidden video gets no frames and every grab is black', async () => {
+  const html = readFileSync(new URL('../../src/holder/holder.html', import.meta.url), 'utf8');
+  const video = html.match(/<video[^>]*>/)[0];
+  assert.doesNotMatch(video, /\bhidden\b/);
+  assert.match(video, /width="1"/);
+  assert.match(video, /height="1"/);
+});
+
 test('holder.html tells the candidate to click the screen preview, then Share', async () => {
   const html = readFileSync(new URL('../../src/holder/holder.html', import.meta.url), 'utf8');
   assert.match(html, /click the screen preview, then <b>Share<\/b>/i);
