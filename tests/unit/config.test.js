@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULTS, normalize, validate, effectiveExamPrefix, resolved } from '../../src/core/config.js';
 
-const good = { startPrefix: 'https://exam.example.com/start', examPrefix: '', resultPrefix: 'https://exam.example.com/result', seat: 'A17', subfolder: 'ExamEye', shotIntervalMin: 10, abandonMin: 10, startButton: '', endButton: '', endMarker: '', maxMin: 0, tailMin: 5 };
+const good = { startPrefix: 'https://exam.example.com/start', examPrefix: '', resultPrefix: 'https://exam.example.com/result', seat: 'A17', subfolder: 'ExamEye', shotIntervalMin: 10, abandonMin: 10, startButton: '', endButton: '', endMarker: '', maxMin: 0, tailMin: 5, desktopCapture: 'on', desktopRepromptMin: 5 };
 
 test('normalize merges defaults, trims strings, coerces numbers', () => {
   const cfg = normalize({ startPrefix: '  https://x.example/s ', shotIntervalMin: '5' });
@@ -68,4 +68,23 @@ test('maxMin 0-600 integer, tailMin 0-60 integer', () => {
   assert.deepEqual(validate({ ...good, maxMin: 601 }).map(e => e.field), ['maxMin']);
   assert.deepEqual(validate({ ...good, tailMin: -1 }).map(e => e.field), ['tailMin']);
   assert.deepEqual(validate({ ...good, tailMin: 1.5 }).map(e => e.field), ['tailMin']);
+});
+
+test('desktop fields default on / 5', () => {
+  const cfg = normalize({});
+  assert.equal(cfg.desktopCapture, 'on');
+  assert.equal(cfg.desktopRepromptMin, 5);
+  assert.equal(normalize({ desktopRepromptMin: '0' }).desktopRepromptMin, 0);
+});
+
+test('desktopCapture must be on or off', () => {
+  assert.deepEqual(validate({ ...good, desktopCapture: 'yes' }).map(e => e.field), ['desktopCapture']);
+  assert.deepEqual(validate({ ...good, desktopCapture: 'OFF' }).map(e => e.field), ['desktopCapture']);
+});
+
+test('desktopRepromptMin integer 0-60', () => {
+  assert.deepEqual(validate({ ...good, desktopRepromptMin: -1 }).map(e => e.field), ['desktopRepromptMin']);
+  assert.deepEqual(validate({ ...good, desktopRepromptMin: 61 }).map(e => e.field), ['desktopRepromptMin']);
+  assert.deepEqual(validate({ ...good, desktopRepromptMin: 2.5 }).map(e => e.field), ['desktopRepromptMin']);
+  assert.deepEqual(validate({ ...good, desktopRepromptMin: 0 }), []);
 });

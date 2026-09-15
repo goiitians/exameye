@@ -10,7 +10,7 @@ const decodeDataUrl = (url) => {
 
 test('arm on start page, record a tab switch, disarm on result, files written', async () => {
   const site = await startSite();
-  const config = { startPrefix: `${site.origin}/exam/start.html`, examPrefix: '', resultPrefix: `${site.origin}/exam/result.html`, seat: 'T1', subfolder: 'ExamEyeTest', shotIntervalMin: 10, abandonMin: 10, startButton: '', endButton: '', endMarker: '', maxMin: 0, tailMin: 0 };
+  const config = { startPrefix: `${site.origin}/exam/start.html`, examPrefix: '', resultPrefix: `${site.origin}/exam/result.html`, seat: 'T1', subfolder: 'ExamEyeTest', shotIntervalMin: 10, abandonMin: 10, startButton: '', endButton: '', endMarker: '', maxMin: 0, tailMin: 0, desktopCapture: 'off', desktopRepromptMin: 5 };
   const b = await launch(config);
   let collector;
   try {
@@ -127,7 +127,7 @@ async function drainDownloads(collector) {
 
 test('start button arms; confirm click starts the tail; tab close ends with SUBMITTED', async () => {
   const site = await startSite();
-  const config = { startPrefix: `${site.origin}/exam/paper.html`, examPrefix: '', resultPrefix: '', seat: 'T2', subfolder: 'ExamEyeTest', shotIntervalMin: 10, abandonMin: 10, startButton: 'Start', endButton: 'Confirm submission', endMarker: 'Your answers have been submitted', maxMin: 0, tailMin: 1 };
+  const config = { startPrefix: `${site.origin}/exam/paper.html`, examPrefix: '', resultPrefix: '', seat: 'T2', subfolder: 'ExamEyeTest', shotIntervalMin: 10, abandonMin: 10, startButton: 'Start', endButton: 'Confirm submission', endMarker: 'Your answers have been submitted', maxMin: 0, tailMin: 1, desktopCapture: 'off', desktopRepromptMin: 5 };
   const b = await launch(config);
   let collector;
   try {
@@ -177,7 +177,7 @@ test('start button arms; confirm click starts the tail; tab close ends with SUBM
 
 test('auto-submit: marker alone ends the exam phase as AUTO_SUBMITTED', async () => {
   const site = await startSite();
-  const config = { startPrefix: `${site.origin}/exam/paper.html`, examPrefix: '', resultPrefix: '', seat: 'T3', subfolder: 'ExamEyeTest', shotIntervalMin: 10, abandonMin: 10, startButton: 'Start', endButton: 'Confirm submission', endMarker: 'Your answers have been submitted', maxMin: 0, tailMin: 1 };
+  const config = { startPrefix: `${site.origin}/exam/paper.html`, examPrefix: '', resultPrefix: '', seat: 'T3', subfolder: 'ExamEyeTest', shotIntervalMin: 10, abandonMin: 10, startButton: 'Start', endButton: 'Confirm submission', endMarker: 'Your answers have been submitted', maxMin: 0, tailMin: 1, desktopCapture: 'off', desktopRepromptMin: 5 };
   const b = await launch(config);
   let collector;
   try {

@@ -12,7 +12,8 @@ const tick = () => new Promise((r) => setTimeout(r, 5));
 
 test('options form has one field per config key, ok/err status colours and a module script', async () => {
   const html = await readFile(new URL('../../src/options/options.html', import.meta.url), 'utf8');
-  for (const k of fields) assert.match(html, new RegExp(`name="${k}"`), k);
+  // desktopCapture/desktopRepromptMin get their <input> fields in Task 7 (desktop-capture-plan.md).
+  for (const k of fields.filter(k => k !== 'desktopCapture' && k !== 'desktopRepromptMin')) assert.match(html, new RegExp(`name="${k}"`), k);
   assert.match(html, /#status\.ok \{ color: #0/);
   assert.match(html, /#status\.err \{ color: #a00/);
   assert.match(html, /<script type="module" src="options.js"><\/script>/);

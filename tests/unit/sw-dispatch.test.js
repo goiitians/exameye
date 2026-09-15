@@ -4,7 +4,7 @@ import { installFakeChrome } from './fake-chrome.js';
 import { verify } from '../../src/core/hashchain.js';
 
 const chrome = installFakeChrome();
-const config = { startPrefix: 'https://e.x/start', examPrefix: '', resultPrefix: 'https://e.x/result', seat: 'A17', subfolder: 'ExamEye', shotIntervalMin: 10, abandonMin: 10, startButton: '', endButton: '', endMarker: '', maxMin: 0, tailMin: 0 };
+const config = { startPrefix: 'https://e.x/start', examPrefix: '', resultPrefix: 'https://e.x/result', seat: 'A17', subfolder: 'ExamEye', shotIntervalMin: 10, abandonMin: 10, startButton: '', endButton: '', endMarker: '', maxMin: 0, tailMin: 0, desktopCapture: 'off', desktopRepromptMin: 5 };
 const sw = await import('../../src/sw.js');
 const get = (k) => chrome.storage.local.get(k);
 

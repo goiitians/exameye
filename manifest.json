@@ -19,7 +19,8 @@
     "downloads",
     "downloads.ui",
     "idle",
-    "scripting"
+    "scripting",
+    "desktopCapture"
   ],
   "host_permissions": [
     "<all_urls>"
