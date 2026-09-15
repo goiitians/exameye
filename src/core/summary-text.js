@@ -15,6 +15,25 @@ export function describeOutcome(session) {
   return line;
 }
 
+export function describeDesktopSummary(desktop, endedAt, lastError) {
+  const { frames = 0, asks = 0, declined = 0, failed = 0, spans = [] } = desktop;
+  if (spans.length === 0) {
+    if (failed > 0) return `failed: ${lastError}`;
+    if (declined > 0) return `declined (${asks} asks)`;
+    return 'off';
+  }
+  let line = '';
+  spans.forEach((sp, i) => {
+    const from = fmtLocal(sp.from).slice(11);
+    const to = fmtLocal(sp.to ?? endedAt).slice(11);
+    line += i === 0 ? `on ${from} - ${to}` : `, re-shared ${from} - ${to}`;
+    if (sp.stopped) line += `, stopped at ${to}`;
+  });
+  line += ` (${frames} frames)`;
+  if (declined > 0) line += `; declined ${declined}x`;
+  return line;
+}
+
 export function renderSummaryText({ session, outcome, endedAt, events, tally, integrity }) {
   const shots = new Set(events.filter(e => e.shot).map(e => e.shot)).size;
   const d = tally.durations;
@@ -22,6 +41,7 @@ export function renderSummaryText({ session, outcome, endedAt, events, tally, in
   const examEnd = session.examEndedAt ?? endedAt;
   const examShots = new Set(events.filter(e => e.shot && e.data?.phase !== 'tail').map(e => e.shot)).size;
   const showTail = session.examEndedAt != null && (tally.tail.events > 0 || session.closingUntil != null);
+  const lastFailed = [...events].reverse().find(e => e.name === 'DESKTOP_CAPTURE_FAILED');
   const L = [
     'ExamEye summary',
     `Session:   ${session.id}   Seat: ${session.seat}`,
@@ -29,6 +49,7 @@ export function renderSummaryText({ session, outcome, endedAt, events, tally, in
     `Trigger:   ${describeOutcome(session)}`,
     `Duration:  ${fmtDuration(endedAt - session.startedAt)}`,
     `Log chain: ${integrity.ok ? 'OK' : `BROKEN at line ${integrity.firstBad}`} (${integrity.lines} lines)`,
+    `Desktop:   ${describeDesktopSummary(tally.desktop, endedAt, lastFailed?.data?.error)}`,
     '', 'Phases',
     `  ${dots('Exam', 18)} ${fmtLocal(session.startedAt).slice(11)} - ${fmtLocal(examEnd).slice(11)}  ${examShots} screenshots`,
   ];
@@ -43,6 +64,8 @@ export function renderSummaryText({ session, outcome, endedAt, events, tally, in
     `  ${dots('Idle', 18)} ${fmtDuration(d.idleMs)}`,
     '', 'Parallel pages (focused time, visits)');
   for (const p of tally.parallel) L.push(`  ${fmtDuration(p.focusedMs)}  ${p.visits}  ${p.url}  ${JSON.stringify(p.title)}${p.incognito ? '  [incognito]' : ''}`);
-  L.push('', `Screenshots: ${shots} (screenshots/)`, '');
+  L.push('', `Screenshots: ${shots} (screenshots/)`);
+  if (tally.desktop.frames > 0) L.push(`Desktop frames: ${tally.desktop.frames} (screenshots/desktop/)`);
+  L.push('');
   return L.join('\n');
 }

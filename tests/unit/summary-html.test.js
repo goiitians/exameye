@@ -36,3 +36,22 @@ test('includes Trigger row and Phases table', () => {
   assert.ok(html.includes('<td>Trigger</td>'));
   assert.ok(html.includes('Post-submit tail'));
 });
+
+test('Desktop capture section lists DESKTOP_* events and the status line', () => {
+  const evs = [...events, { seq: 3, t: started + 2000, name: 'DESKTOP_CAPTURE_STARTED', data: { width: 1920, height: 1080, pickMs: 300 }, shot: null }];
+  const html = renderSummaryHtml({ ...ctx, events: evs, tally: tally(evs), inlineShots: true });
+  assert.ok(html.includes('<h2>Desktop capture</h2>'));
+  assert.ok(html.includes('<td>DESKTOP_CAPTURE_STARTED</td>'));
+});
+
+test('timeline row links the desktop frame and the screenshots section includes desktop files', () => {
+  const evs = [...events, { seq: 3, t: started + 2000, name: 'FOCUS_LEFT_CHROME', data: { desktopShot: 'screenshots/desktop/x.jpg' }, shot: null }];
+  const shots = { ...ctx.shots, 'screenshots/desktop/x.jpg': '/9j/BBB' };
+  const htmlInline = renderSummaryHtml({ ...ctx, events: evs, tally: tally(evs), shots, inlineShots: true });
+  assert.ok(htmlInline.includes('href="#screenshots/desktop/x.jpg"'));
+  assert.ok(htmlInline.includes('<h3 id="screenshots/desktop/x.jpg">'));
+  assert.ok(htmlInline.includes('<img src="data:image/jpeg;base64,/9j/BBB"'));
+
+  const htmlLinked = renderSummaryHtml({ ...ctx, events: evs, tally: tally(evs), shots, inlineShots: false });
+  assert.ok(htmlLinked.includes('src="screenshots/desktop/x.jpg"'));
+});

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { renderSummaryText, describeOutcome } from '../../src/core/summary-text.js';
+import { renderSummaryText, describeOutcome, describeDesktopSummary } from '../../src/core/summary-text.js';
 import { tally } from '../../src/core/counters.js';
 import { fmtLocal } from '../../src/core/ids.js';
 
@@ -80,4 +80,41 @@ test('Trigger and Phases lines', () => {
   const phasesAt2 = lines2.indexOf('Phases');
   assert.match(lines2[phasesAt2 + 1], /^  Exam /);
   assert.equal(lines2[phasesAt2 + 2], '');
+});
+
+test('describeDesktopSummary', () => {
+  assert.equal(describeDesktopSummary({ frames: 0, asks: 0, declined: 0, failed: 0, spans: [] }), 'off');
+  assert.equal(describeDesktopSummary({ asks: 3, declined: 3, spans: [] }), 'declined (3 asks)');
+  assert.equal(describeDesktopSummary({ failed: 1, spans: [] }, undefined, 'NotAllowedError'), 'failed: NotAllowedError');
+
+  const onAt = new Date(2026, 8, 12, 9, 15, 4).getTime();
+  const endedAt = new Date(2026, 8, 12, 12, 15, 44).getTime();
+  assert.equal(
+    describeDesktopSummary({ frames: 37, declined: 0, spans: [{ from: onAt, to: null, stopped: false }] }, endedAt),
+    'on 09:15:04 - 12:15:44 (37 frames)',
+  );
+
+  const stopAt = new Date(2026, 8, 12, 9, 40, 2).getTime();
+  const resumeAt = new Date(2026, 8, 12, 9, 41, 30).getTime();
+  assert.equal(
+    describeDesktopSummary({
+      frames: 37, declined: 1,
+      spans: [{ from: onAt, to: stopAt, stopped: true }, { from: resumeAt, to: null, stopped: false }],
+    }, endedAt),
+    'on 09:15:04 - 09:40:02, stopped at 09:40:02, re-shared 09:41:30 - 12:15:44 (37 frames); declined 1x',
+  );
+});
+
+test('summary.txt has the Desktop line after Log chain and a Desktop frames line when frames > 0', () => {
+  const evs = [{ seq: 1, t: started, name: 'SESSION_ARMED', data: {}, shot: 'screenshots/a.jpg' }];
+  const t = tally(evs);
+  t.desktop = { frames: 37, asks: 1, declined: 0, failed: 0, spans: [{ from: started + 2000, to: null, stopped: false }] };
+  const ctx5 = { session: { id: 'X', seat: 'A1', startedAt: started }, outcome: 'RESULT', endedAt: started + 3723000, events: evs, tally: t, integrity: { ok: true, firstBad: -1, lines: 2 } };
+  const text = renderSummaryText(ctx5);
+  assert.match(text, /^Desktop:   on /m);
+  assert.match(text, /^Desktop frames: 37 \(screenshots\/desktop\/\)$/m);
+
+  t.desktop = { ...t.desktop, frames: 0 };
+  const noFramesText = renderSummaryText(ctx5);
+  assert.doesNotMatch(noFramesText, /^Desktop frames:/m);
 });
