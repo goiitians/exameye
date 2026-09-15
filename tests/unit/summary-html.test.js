@@ -33,7 +33,7 @@ test('linked variant references files relative to the session folder', () => {
 test('includes Trigger row and Phases table', () => {
   const session = { ...ctx.session, trigger: 'button', triggerLabel: 'finish', examEndedAt: started + 30000, maxAt: null, closingUntil: started + 90000 };
   const html = renderSummaryHtml({ ...ctx, session, inlineShots: true });
-  assert.ok(html.includes('<td>Trigger</td>'));
+  assert.ok(html.includes('end button &quot;finish&quot; clicked at'));
   assert.ok(html.includes('Post-submit tail'));
 });
 
@@ -49,9 +49,43 @@ test('timeline row links the desktop frame and the screenshots section includes 
   const shots = { ...ctx.shots, 'screenshots/desktop/x.jpg': '/9j/BBB' };
   const htmlInline = renderSummaryHtml({ ...ctx, events: evs, tally: tally(evs), shots, inlineShots: true });
   assert.ok(htmlInline.includes('href="#screenshots/desktop/x.jpg"'));
-  assert.ok(htmlInline.includes('<h3 id="screenshots/desktop/x.jpg">'));
+  assert.ok(htmlInline.includes('<figure id="screenshots/desktop/x.jpg">'));
+  assert.ok(htmlInline.includes('<span class="tag desktop">desktop</span>'));
   assert.ok(htmlInline.includes('<img src="data:image/jpeg;base64,/9j/BBB"'));
 
   const htmlLinked = renderSummaryHtml({ ...ctx, events: evs, tally: tally(evs), shots, inlineShots: false });
   assert.ok(htmlLinked.includes('src="screenshots/desktop/x.jpg"'));
+});
+
+test('dashboard: outcome and log-chain badges carry icon + label, flags appear only for non-zero risky counts', () => {
+  const html = renderSummaryHtml({ ...ctx, inlineShots: true });
+  assert.match(html, /<span class="badge good">&#10003; RESULT<\/span>/);
+  assert.match(html, /<span class="badge good">&#10003; Log chain OK \(3 lines\)<\/span>/);
+  assert.match(html, /<div class="flag critical"><div class="k">Parallel pages<\/div><div class="v">1<small>/);
+  assert.ok(!html.includes('Tab switches'), 'a zero count must not render a flag tile');
+  const broken = renderSummaryHtml({ ...ctx, integrity: { ok: false, firstBad: 2, lines: 3 }, outcome: 'ABANDONED', inlineShots: true });
+  assert.match(broken, /badge critical">&#10007; Log chain BROKEN at line 2/);
+  assert.match(broken, /badge critical">&#10007; ABANDONED/);
+});
+
+test('dashboard: time-away bars are proportional to the session and details render as key/value, not JSON', () => {
+  const evs = [
+    ...events,
+    { seq: 3, t: started + 2000, name: 'FOCUS_LEFT_CHROME', data: {}, shot: null },
+    { seq: 4, t: started + 32000, name: 'FOCUS_RETURNED', data: { awayMs: 30000 }, shot: null },
+  ];
+  const html = renderSummaryHtml({ ...ctx, events: evs, tally: tally(evs), inlineShots: true });
+  assert.match(html, /Focus left Chrome \(user\)<\/div><div class="bt"><div class="bf" style="width:50\.00%"><\/div><\/div><div class="bv">00:00:30/);
+  assert.ok(html.includes('<span class="kv"><b>awayMs</b> 30000</span>'));
+  assert.ok(!html.includes('{&quot;awayMs&quot;'), 'timeline details must not be a JSON dump');
+  assert.match(html, /<td class="ev">FOCUS_LEFT_CHROME<\/td>/);
+});
+
+test('dashboard: tail-phase rows are tagged and no image is duplicated between timeline and gallery', () => {
+  const evs = [...events, { seq: 3, t: started + 2000, name: 'DESKTOP_FRAME', data: { n: 1, phase: 'tail' }, shot: 'screenshots/desktop/f.jpg' }];
+  const shots = { ...ctx.shots, 'screenshots/desktop/f.jpg': '/9j/CCC' };
+  const html = renderSummaryHtml({ ...ctx, events: evs, tally: tally(evs), shots, inlineShots: true });
+  assert.match(html, /<tr class="tail">.*DESKTOP_FRAME <span class="tag">tail<\/span>/);
+  assert.equal(html.split('/9j/CCC').length - 1, 1);
+  assert.equal(html.split('/9j/AAA').length - 1, 1);
 });
