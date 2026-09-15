@@ -43,25 +43,35 @@ Two routes; pick one per centre.
 | Output subfolder under Downloads | `ExamEye` (default) |
 | Periodic screenshot interval (minutes) | 10 (default) |
 | Abandon session after exam tab gone (minutes) | 10 (default) |
+| Desktop capture | `on` (default; set `off` only where the centre forbids screen recording) |
+| Re-ask after a declined share (minutes; 0 = ask once) | 5 (default) |
 Click Save. The status line must read `Saved.`; any red text names a field to fix.
 
 ## 5. Tab sleeping
 - Chrome: Settings -> Performance -> Memory Saver: add the exam site to "Always keep these sites active".
 - Edge: Settings -> System and performance -> "Never put these sites to sleep": add the exam site.
 
+## 5a. Screen recording permission (macOS only)
+Windows needs nothing. macOS: System Settings -> Privacy & Security -> Screen Recording -> enable Chrome (or Edge), then quit and reopen the browser; without it every desktop frame is black and nothing warns.
+
 ## 6. Dry run (10 minutes)
 1. Open the exam start URL in a new tab. Click the ExamEye toolbar icon: popup "State" must show `ARMED` and "Session" a session id.
    If a Start button label is configured, the popup must still show `IDLE` after the start page loads and `ARMED` only after the Start button is clicked.
+1a. If Desktop capture is `on`, the start page also opens a small "ExamEye screen capture" window and Chrome's "Choose what to share" dialog; click **Share**. The popup must show `Desktop capture: on since HH:MM:SS`. The small window minimises itself; do not close it.
 2. Open a second tab to any site, then return. Popup "Counters" must show `TAB_SWITCH: 1`.
+2a. If Desktop capture is `on`, click the desktop or another application for 15 s, then return to Chrome.
 3. Minimise and restore the window. Counters must show `WINDOW_MINIMIZED: 1`.
 4. Trigger the real screensaver or lock screen (hot corner, or wait out the machine's idle timeout) and then resume. Popup "Counters" must show `SCREENSAVER: 1`, and `log.txt` in the session folder must contain a line with `IDLE_START` and `state="locked"` - this holds on the idle-timeout path too: Chrome may report `state="idle"` first (detection interval) and only report `state="locked"` once the screensaver actually engages, and the log now shows both transitions (an `IDLE_END` closing the idle interval followed by a fresh `IDLE_START state="locked"`). If the platform never reports a locked state at all, `state="idle"` is expected instead - this is the documented `idle` fallback classification and is not a fault. `log.txt` is written on the next flush, not instantly - check the popup's "Last flush" time before checking the file.
 On a throw-away candidate account walk every in-paper screen and confirm the configured marker phrase appears on none of them, then submit and confirm it appears on the submitted screen; the popup must show `CLOSING` and return to `IDLE` after the tail (default 5 minutes) or when the tab is closed.
 5. Navigate the exam tab to the result URL. State returns to `IDLE`.
-6. Check `<Chrome download directory>/ExamEye/<YYYYMMDD-HHMMSS_SEAT>/` contains `log.txt`, `events.jsonl`, `summary.txt`, `summary.html`, `screenshots/` with at least 3 JPEGs. Open `summary.html` and confirm the screenshots display. `summary.txt` must show `Outcome: SUBMITTED` (or `AUTO_SUBMITTED` / `RESULT` as applicable), a `Trigger:` line, and a `Post-submit tail` line with a screenshot count.
+6. Check `<Chrome download directory>/ExamEye/<YYYYMMDD-HHMMSS_SEAT>/` contains `log.txt`, `events.jsonl`, `summary.txt`, `summary.html`, `screenshots/` with at least 3 JPEGs. If Desktop capture is `on`, it also contains `screenshots/desktop/` with at least 2 JPEGs, and `summary.html` must show them next to `FOCUS_LEFT_CHROME`/`DESKTOP_FRAME` (on macOS, confirm they are not black). Open `summary.html` and confirm the screenshots display. `summary.txt` must show `Outcome: SUBMITTED` (or `AUTO_SUBMITTED` / `RESULT` as applicable), a `Trigger:` line, a `Post-submit tail` line with a screenshot count, and (if Desktop capture is `on`) a `Desktop:` line.
 7. The download shelf/flyout must not have shown any ExamEye files. If it did on Edge, that build lacks `downloads.setUiOptions`; recording is unaffected.
 8. Edge vertical tabs / side panel can trigger DEVTOOLS_OPENED on every page - close them for the exam.
 9. A result page opening in a new tab (not the exam tab) also ends the session: `SESSION_DISARMED{outcome:RESULT}` is recorded from that tab and the popup returns to `IDLE`.
 
 ## 7. Unmanaged machines - what is and is not enforced
 - Nothing prevents a candidate from disabling the extension. A re-enable shows up as EXTENSION_GAP; a session with missing files is itself evidence.
-- ExamEye only records "focus left Chrome"; it does not name other applications and takes no desktop screenshots.
+- ExamEye records "focus left Chrome"; when Desktop capture is `off` it takes no desktop screenshots. It never names other applications, even when Desktop capture is `on`.
+
+## 8. Candidate notice
+Display or read out before the paper: "Your screen is recorded during this paper. Chrome will ask you to share your screen when the exam page opens; choose Share. Do not close the small ExamEye window or press Stop sharing." Cancel and Stop sharing are logged and re-asked.
