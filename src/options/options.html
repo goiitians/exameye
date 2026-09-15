@@ -5,6 +5,7 @@
   body { font: 14px system-ui; margin: 24px; max-width: 640px; }
   label { display: block; margin: 12px 0 4px; font-weight: 600; }
   input { width: 100%; padding: 6px; box-sizing: border-box; }
+  select { width: 100%; padding: 6px; }
   button { margin-top: 16px; padding: 8px 16px; }
   #status { white-space: pre-line; margin-top: 12px; }
   #status.ok { color: #070; }
@@ -25,6 +26,11 @@
   <label>Output subfolder under Downloads<input name="subfolder"></label>
   <label>Periodic screenshot interval (minutes)<input name="shotIntervalMin" type="number" min="1" max="60"></label>
   <label>Abandon session after exam tab gone (minutes)<input name="abandonMin" type="number" min="1" max="120"></label>
+  <label>Desktop capture (screen frames while focus leaves Chrome)<select name="desktopCapture">
+    <option value="on">on</option>
+    <option value="off">off</option>
+  </select></label>
+  <label>Re-ask after a declined share (minutes; 0 = ask once)<input name="desktopRepromptMin" type="number" min="0" max="60"></label>
   <button type="submit">Save</button>
 </form>
 <div id="status"></div>

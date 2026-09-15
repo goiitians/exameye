@@ -1,4 +1,5 @@
 import { tally } from '../core/counters.js';
+import { describeDesktop } from '../core/desktop.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -12,8 +13,9 @@ async function render() {
   if (meta.lastError) errors.push(`last error: ${meta.lastError}`);
   $('errors').textContent = errors.join('\n') || '-';
   $('options').hidden = !(meta.configErrors || []).length;
-  const { counts } = tally(events);
+  const { counts, desktop } = tally(events);
   $('counts').textContent = Object.keys(counts).sort().map(n => `${n}: ${counts[n]}`).join('\n') || '(no events)';
+  $('desktop').textContent = describeDesktop(meta.desktop, desktop.frames);
 }
 
 $('options').addEventListener('click', (e) => { e.preventDefault(); chrome.runtime.openOptionsPage(); });

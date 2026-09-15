@@ -12,11 +12,16 @@ const tick = () => new Promise((r) => setTimeout(r, 5));
 
 test('options form has one field per config key, ok/err status colours and a module script', async () => {
   const html = await readFile(new URL('../../src/options/options.html', import.meta.url), 'utf8');
-  // desktopCapture/desktopRepromptMin get their <input> fields in Task 7 (desktop-capture-plan.md).
-  for (const k of fields.filter(k => k !== 'desktopCapture' && k !== 'desktopRepromptMin')) assert.match(html, new RegExp(`name="${k}"`), k);
+  for (const k of fields) assert.match(html, new RegExp(`name="${k}"`), k);
   assert.match(html, /#status\.ok \{ color: #0/);
   assert.match(html, /#status\.err \{ color: #a00/);
   assert.match(html, /<script type="module" src="options.js"><\/script>/);
+});
+
+test('form has desktopCapture select and desktopRepromptMin input', async () => {
+  const html = await readFile(new URL('../../src/options/options.html', import.meta.url), 'utf8');
+  assert.match(html, /<select name="desktopCapture">\s*<option value="on">on<\/option>\s*<option value="off">off<\/option>\s*<\/select>/);
+  assert.match(html, /<input name="desktopRepromptMin" type="number" min="0" max="60">/);
 });
 
 test('load fills the form from storage (defaults when nothing saved)', async () => {
@@ -52,6 +57,16 @@ test('valid submit: green Saved., config stored normalised, form re-synced to wh
   assert.equal(dom.form.elements.seat.value, 'A17');
   assert.equal(dom.form.elements.resultPrefix.value, 'https://e.x/result');
   assert.equal(dom.form.elements.shotIntervalMin.value, 5);
+});
+
+test('save round-trips desktopCapture off', async () => {
+  Object.assign(dom.form.elements.desktopCapture, { value: 'off' });
+  await dom.form.submit();
+  await tick();
+  assert.equal(dom.status.className, 'ok');
+  const { config } = await chrome.storage.local.get('config');
+  assert.equal(config.desktopCapture, 'off');
+  assert.equal(dom.form.elements.desktopCapture.value, 'off');
 });
 
 test('result prefix may be blank and the page saves', async () => {
