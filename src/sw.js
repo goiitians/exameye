@@ -385,12 +385,14 @@ export async function tick() {
 // STARTUP re-adopts it would be logged as a PARALLEL_PAGE (and the gap as 'sw-restart').
 export function recover() {
   return enqueue(async () => {
+    await store.patchMeta({ desktop: EMPTY_DESKTOP, desktopAway: EMPTY_TAIL });
     await finishPendingEndNow();
     const cfg = await loadConfig();
     const { session } = await store.get('session');
     if (!cfg || !session || session.state === 'IDLE') return;
     const examTabs = (await queryAllTabs()).filter(t => classify(t.url, cfg)).map(t => ({ tabId: t.id, windowId: t.windowId, url: t.url }));
     await dispatchNow({ kind: 'STARTUP', at: now(), examTabs });
+    await promptDesktopNow();
   });
 }
 

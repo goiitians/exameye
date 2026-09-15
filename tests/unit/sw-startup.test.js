@@ -1,8 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { installFakeChrome } from './fake-chrome.js';
+import { EMPTY_DESKTOP } from '../../src/core/desktop.js';
+import { EMPTY_TAIL } from '../../src/core/tailshots.js';
 
 const chrome = installFakeChrome();
+chrome.desktopCapture = {};
 const config = { startPrefix: 'https://e.x/start', examPrefix: '', resultPrefix: 'https://e.x/result', seat: 'A17', subfolder: 'ExamEye', shotIntervalMin: 10, abandonMin: 10, startButton: '', endButton: '', endMarker: '', maxMin: 0, tailMin: 0, desktopCapture: 'off', desktopRepromptMin: 5 };
 await chrome.storage.local.set({ config });
 const sw = await import('../../src/sw.js');
@@ -76,5 +79,53 @@ test('recover ends a CLOSING session whose closingUntil passed', async () => {
   const { session: after } = await get('session');
   assert.deepEqual(after, { state: 'IDLE' });
   assert.ok(chrome.downloads.calls.filter(c => c.filename.endsWith('summary.txt')).length > 0);
+  await chrome.storage.local.set({ config });
+});
+
+test('recover() after a browser restart drops the stale holder id, resets desktop and prompts once for an ARMED session', async () => {
+  await chrome.storage.local.set({ config: { ...config, desktopCapture: 'on' } });
+  await sw.settled();
+  chrome.tabs.list = [{ id: 70, windowId: 9, url: 'https://e.x/q/1', title: 'Exam', incognito: false, active: true }];
+  chrome.windows.list = [{ id: 9, focused: true, state: 'normal' }];
+  const armedSession = {
+    state: 'ARMED', id: '20260101-000000_A17', seat: 'A17', startedAt: 0, examTabId: 70, examWindowId: 9,
+    examUrl: 'https://e.x/start', seq: 1, lastActivityAt: 0, tabLostAt: null, windowState: 'normal',
+    away: { tabAt: null, tabId: null, tabUrl: null, focusAt: null, minAt: null, idleAt: null, idleState: null },
+    maxAt: null, endClickAt: null, markerSeen: false, outcome: null, trigger: null, triggerLabel: null,
+    examEndedAt: null, closingUntil: null,
+  };
+  await chrome.storage.local.set({
+    session: armedSession,
+    meta: {
+      desktop: { state: 'on', at: 0, since: 0, holderWindowId: 77, asks: 1, width: 800, height: 600, error: null, nextAskAt: null },
+      desktopAway: { count: 5, lastHash: 'x', lastAt: 1 },
+    },
+  });
+  await chrome.runtime.onStartup.emit();
+  await sw.settled();
+  const { meta } = await get('meta');
+  assert.equal(meta.desktop.state, 'prompting');
+  assert.notEqual(meta.desktop.holderWindowId, 77);
+  assert.deepEqual(meta.desktopAway, EMPTY_TAIL);
+  assert.equal(chrome.windows.list.filter(w => w.type === 'popup').length, 1);
+  await chrome.storage.local.set({ config, session: { state: 'IDLE' } });
+});
+
+test('recover() with an IDLE session resets desktop and does not prompt', async () => {
+  chrome.windows.list = [];
+  await chrome.storage.local.set({ config: { ...config, desktopCapture: 'on' } });
+  await chrome.storage.local.set({
+    session: { state: 'IDLE' },
+    meta: {
+      desktop: { state: 'on', at: 0, since: 0, holderWindowId: 5, asks: 1, width: 800, height: 600, error: null, nextAskAt: null },
+      desktopAway: { count: 2, lastHash: 'y', lastAt: 1 },
+    },
+  });
+  await sw.recover();
+  await sw.settled();
+  const { meta } = await get('meta');
+  assert.deepEqual(meta.desktop, EMPTY_DESKTOP);
+  assert.deepEqual(meta.desktopAway, EMPTY_TAIL);
+  assert.equal(chrome.windows.list.length, 0);
   await chrome.storage.local.set({ config });
 });
