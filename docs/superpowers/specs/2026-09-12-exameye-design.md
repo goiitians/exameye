@@ -384,7 +384,9 @@ during centre dry-run (docs/centre-setup.md step 6). The `idle` fallback exists 
 
 Content-script names on the wire (`CS` input): `COPY`, `CUT`, `PASTE`, `CONTEXTMENU`, `PRINT`,
 `FULLSCREEN_EXIT`, `DEVTOOLS`, `VISIBILITY{hidden}`, `BLUR`, `FOCUS`, `START_CLICK{label}`,
-`END_CLICK{label}`, `END_MARKER{marker}`, `SCREEN_CHANGED{}`.
+`END_CLICK{label}`, `END_MARKER{marker}`, `SCREEN_CHANGED{}`. The content script runs the marker
+check and `SCREEN_CHANGED` on a trailing 1 s debounce of DOM mutations with a 5 s ceiling, so a
+page element that updates every second (a countdown) cannot postpone it forever.
 
 Click matching in the content script: capture-phase `click` listener on `document`; the control
 is `e.target.closest('button, a, input[type=submit], input[type=button], [role=button]')`; its

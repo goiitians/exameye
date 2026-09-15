@@ -103,6 +103,16 @@ test('a submitted screen already on the page is reported once the config arrives
   assert.equal(sent.filter(m => m.name === 'END_MARKER').length, before + 1);
 });
 
+test('a mutation every 500 ms still yields one SCREEN_CHANGED within 5 s', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
+  const count = () => sent.filter(m => m.name === 'SCREEN_CHANGED').length;
+  const n = count();
+  for (let i = 0; i < 12; i++) { FakeObserver.last.trigger(); t.mock.timers.tick(500); }
+  assert.equal(count(), n + 1);
+  t.mock.timers.tick(1000);
+  assert.equal(count(), n + 2);
+});
+
 test('config arrives from storage.local.get at load', () => {
   assert.deepEqual(storageGetCalls, ['config']);
 });

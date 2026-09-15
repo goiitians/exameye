@@ -54,16 +54,22 @@
     else if (endLabels.includes(label)) send('END_CLICK', { label });
   }, true);
 
-  let changeTimer = null;
+  const MAX_WAIT_MS = 5000;
+  let changeTimer = null, firstPendingAt = null;
+  function runChange() {
+    changeTimer = null; firstPendingAt = null;
+    send('SCREEN_CHANGED', {});
+    if (marker && !markerSent && norm(document.body?.innerText).includes(marker)) {
+      send('END_MARKER', { marker });
+      markerSent = true;
+    }
+  }
+  // trailing debounce with a ceiling: a page clock ticking every second would otherwise reset the timer forever
   function scheduleChange() {
+    const at = Date.now();
+    if (firstPendingAt === null) firstPendingAt = at;
     clearTimeout(changeTimer);
-    changeTimer = setTimeout(() => {
-      send('SCREEN_CHANGED', {});
-      if (marker && !markerSent && norm(document.body?.innerText).includes(marker)) {
-        send('END_MARKER', { marker });
-        markerSent = true;
-      }
-    }, 1000);
+    changeTimer = setTimeout(runChange, Math.max(0, Math.min(1000, firstPendingAt + MAX_WAIT_MS - at)));
   }
   new MutationObserver(scheduleChange).observe(document.documentElement, { childList: true, characterData: true, subtree: true });
 })();
