@@ -104,6 +104,61 @@ test('arm on start page, record a tab switch, disarm on result, files written', 
   }
 });
 
+// Chrome's native "Choose what to share" picker cannot be dismissed from Playwright (it is not a
+// page dialog; keyboard input goes to the page), so no scenario here exercises the decline path -
+// decline/stop/closed are covered by the sw-desktop and desktop-core unit tests instead.
+test('desktop capture: auto-accepted share logs STARTED, a PERIODIC desktop frame and the summary line', async () => {
+  const site = await startSite();
+  const config = { startPrefix: `${site.origin}/exam/start.html`, examPrefix: '', resultPrefix: `${site.origin}/exam/result.html`, seat: 'T4', subfolder: 'ExamEyeTest', shotIntervalMin: 10, abandonMin: 10, startButton: '', endButton: '', endMarker: '', maxMin: 0, tailMin: 0, desktopCapture: 'on', desktopRepromptMin: 0 };
+  const b = await launch(config, { args: ['--auto-select-desktop-capture-source=Entire screen'] });
+  let collector;
+  try {
+    collector = await collectDownloads(b);
+    await b.page.bringToFront();
+
+    await b.page.goto(`${site.origin}/exam/start.html?c=1`);
+    await waitFor(async () => (await storage(b.worker, 'session')).session?.state === 'ARMED');
+    await waitFor(async () => ((await storage(b.worker, 'events')).events || []).some(e => e.name === 'DESKTOP_CAPTURE_STARTED'), 20000);
+    const { meta } = await storage(b.worker, 'meta');
+    assert.equal(meta.desktop?.state, 'on');
+    assert.ok(b.context.pages().some(p => p.url().endsWith('/src/holder/holder.html')), 'expected a holder page');
+
+    const beforeAlarm = (await collector.evaluate(() => window.__dl)).filter(i => i.mime === 'image/jpeg').length;
+    await b.worker.evaluate(() => chrome.alarms.create('periodic', { when: Date.now() + 500 }));
+    await waitFor(async () => ((await storage(b.worker, 'events')).events || []).some(e => e.name === 'PERIODIC' && /^screenshots\/desktop\//.test(e.data.desktopShot || '')));
+    await waitFor(async () => Object.keys((await storage(b.worker, 'pending')).pending || {}).length === 0);
+    await waitFor(async () => (await collector.evaluate(() => window.__dl)).filter(i => i.mime === 'image/jpeg').length > beforeAlarm);
+
+    await b.page.goto(`${site.origin}/exam/result.html`);
+    await waitFor(async () => (await storage(b.worker, 'session')).session?.state === 'IDLE');
+
+    const readDl = () => collector.evaluate(() => window.__dl);
+    await waitFor(async () => {
+      const items = await readDl();
+      return items.some(i => i.mime === 'text/plain' && (decodeDataUrl(i.url) || '').includes('ExamEye summary'));
+    });
+    const textPlain = (await readDl()).filter(i => i.mime === 'text/plain').map(i => decodeDataUrl(i.url)).filter(Boolean);
+    const summary = textPlain.find(c => c.includes('ExamEye summary'));
+    assert.ok(summary, 'expected a summary.txt write');
+    assert.match(summary, /^Desktop:   on \d\d:\d\d:\d\d - \d\d:\d\d:\d\d \(\d+ frames\)$/m);
+    assert.match(summary, /^Desktop frames: [1-9]\d* \(screenshots\/desktop\/\)$/m);
+
+    const log = textPlain.filter(c => c.startsWith('# ExamEye session')).at(-1);
+    assert.ok(log, 'expected a log.txt write');
+    assert.deepEqual(await verify(log.trimEnd().split('\n')), { ok: true, firstBad: -1 });
+
+    const eventsItem = (await readDl()).find(i => i.mime === 'application/json');
+    assert.ok(eventsItem, 'expected an events.jsonl write');
+    const events = decodeDataUrl(eventsItem.url).trimEnd().split('\n').map(l => JSON.parse(l));
+    assert.ok(!events.some(e => e.name === 'WINDOW_OPENED'), 'expected no WINDOW_OPENED for the holder window');
+    assert.ok(!events.some(e => e.name === 'PARALLEL_PAGE' && (e.data.url || '').startsWith('chrome-extension://')), 'expected no PARALLEL_PAGE for the holder page');
+  } finally {
+    await drainDownloads(collector);
+    await b.close();
+    site.server.close();
+  }
+});
+
 async function collectDownloads(b) {
   const extId = new URL(b.worker.url()).host;
   const collector = await b.context.newPage();

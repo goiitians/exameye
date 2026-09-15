@@ -21,13 +21,13 @@ export async function startSite() {
   return { server, origin: `http://127.0.0.1:${server.address().port}` };
 }
 
-export async function launch(config) {
+export async function launch(config, { args = [] } = {}) {
   await mkdir(PROFILES, { recursive: true });
   const profile = await mkdtemp(path.join(PROFILES, 'profile-'));
   const downloads = await mkdtemp(path.join(PROFILES, 'dl-'));
   const context = await chromium.launchPersistentContext(profile, {
     channel: 'chromium', headless: false,
-    args: [`--disable-extensions-except=${ROOT}`, `--load-extension=${ROOT}`],
+    args: [`--disable-extensions-except=${ROOT}`, `--load-extension=${ROOT}`, ...args],
   });
   const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
   const page = context.pages()[0] || await context.newPage();
