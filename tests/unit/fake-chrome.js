@@ -8,7 +8,16 @@ const yieldTick = () => new Promise((r) => setTimeout(r, 0));
 export function installFakeChrome() {
   const store = {};
   const c = {
-    runtime: { id: 'fake-ext-id', onStartup: evt(), onInstalled: evt(), onMessage: evt() },
+    runtime: {
+      id: 'fake-ext-id', onStartup: evt(), onInstalled: evt(), onMessage: evt(),
+      getURL: (p) => 'chrome-extension://fake-ext-id/' + p,
+      sent: [], responder: null,
+      async sendMessage(msg) {
+        c.runtime.sent.push(msg);
+        if (c.runtime.responder) return c.runtime.responder(msg);
+        throw new Error('Could not establish connection');
+      },
+    },
     storage: {
       local: {
         async get(keys) {
@@ -37,10 +46,28 @@ export function installFakeChrome() {
       onActivated: evt(), onRemoved: evt(), onUpdated: evt(),
     },
     windows: {
-      WINDOW_ID_NONE: -1, list: [],
+      WINDOW_ID_NONE: -1, list: [], nextId: 100,
       async get(id) { const w = c.windows.list.find(w => w.id === id); if (!w) throw new Error('No window with id: ' + id); return w; },
       async getAll() { return c.windows.list; },
       async getLastFocused() { return c.windows.list.find(w => w.focused) || c.windows.list[0] || { id: -1, focused: false }; },
+      async create(opts) {
+        const win = { id: c.windows.nextId++, focused: true, state: 'normal', type: opts.type, url: opts.url };
+        c.windows.list.push(win);
+        await c.windows.onCreated.emit(win);
+        return win;
+      },
+      async update(id, info) {
+        const w = c.windows.list.find(w => w.id === id);
+        if (!w) throw new Error('No window with id: ' + id);
+        Object.assign(w, info);
+        return w;
+      },
+      async remove(id) {
+        const i = c.windows.list.findIndex(w => w.id === id);
+        if (i === -1) throw new Error('No window with id: ' + id);
+        c.windows.list.splice(i, 1);
+        await c.windows.onRemoved.emit(id);
+      },
       onFocusChanged: evt(), onCreated: evt(), onRemoved: evt(),
     },
     webNavigation: { onCommitted: evt(), onHistoryStateUpdated: evt(), onReferenceFragmentUpdated: evt() },

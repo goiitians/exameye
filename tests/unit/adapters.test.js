@@ -10,6 +10,7 @@ const dl = await import('../../src/adapters/downloads.js');
 const { registerExamScript } = await import('../../src/adapters/scripting.js');
 const tabs = await import('../../src/adapters/tabs.js');
 const windows = await import('../../src/adapters/windows.js');
+const desktop = await import('../../src/adapters/desktop.js');
 
 test('storage.patchMeta merges', async () => {
   await storage.set({ meta: { a: 1 } });
@@ -104,4 +105,52 @@ test('tabs and windows return null instead of throwing', async () => {
   assert.equal(await windows.lastFocusedWindowId(), 3);
   chrome.windows.list[0].focused = true;
   assert.equal(await windows.focusedWindowId(), 3);
+});
+
+test('supported reflects chrome.desktopCapture', () => {
+  delete chrome.desktopCapture;
+  assert.equal(desktop.supported(), false);
+  chrome.desktopCapture = {};
+  assert.equal(desktop.supported(), true);
+  delete chrome.desktopCapture;
+});
+
+test('openHolder creates a focused 460x140 popup at the holder URL', async () => {
+  const realCreate = chrome.windows.create.bind(chrome.windows);
+  const calls = [];
+  chrome.windows.create = async (opts) => { calls.push(opts); return realCreate(opts); };
+  try {
+    const win = await desktop.openHolder();
+    assert.deepEqual(calls[0], { url: chrome.runtime.getURL('src/holder/holder.html'), type: 'popup', width: 460, height: 140, focused: true });
+    assert.equal(win.type, 'popup');
+  } finally { chrome.windows.create = realCreate; }
+});
+
+test('grabDesktop/pingHolder fall back to not-alive when nobody answers', async () => {
+  chrome.runtime.responder = null;
+  assert.deepEqual(await desktop.grabDesktop(), { b64: null, alive: false });
+  assert.deepEqual(await desktop.pingHolder(), { alive: false });
+});
+
+test('setAway and askHolder send holder messages', async () => {
+  chrome.runtime.sent = [];
+  chrome.runtime.responder = () => ({ ok: true });
+  await desktop.setAway(true);
+  await desktop.askHolder();
+  assert.deepEqual(chrome.runtime.sent[0], { type: 'holder', name: 'away', on: true });
+  assert.deepEqual(chrome.runtime.sent[1], { type: 'holder', name: 'ask' });
+  chrome.runtime.responder = null;
+});
+
+test('showWindow restores and focuses; minimizeWindow minimises; closeWindow removes and swallows a missing id', async () => {
+  const win = await desktop.openHolder();
+  await desktop.minimizeWindow(win.id);
+  assert.equal(chrome.windows.list.find(w => w.id === win.id).state, 'minimized');
+  await desktop.showWindow(win.id);
+  const w = chrome.windows.list.find(w => w.id === win.id);
+  assert.equal(w.state, 'normal');
+  assert.equal(w.focused, true);
+  await desktop.closeWindow(win.id);
+  assert.equal(chrome.windows.list.find(w => w.id === win.id), undefined);
+  await assert.doesNotReject(() => desktop.closeWindow(999999));
 });
