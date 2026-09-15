@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { needsShot, makeEvent } from '../../src/core/events.js';
+import { needsShot, needsDesktopFrame, makeEvent } from '../../src/core/events.js';
 
 test('needsShot follows the catalogue', () => {
   assert.equal(needsShot({ name: 'TAB_SWITCH', data: {} }), true);
@@ -21,6 +21,23 @@ test('needsShot follows the catalogue', () => {
   assert.equal(needsShot({ name: 'RESULT_PAGE', data: {} }), true);
   assert.equal(needsShot({ name: 'MAX_TIME_REACHED', data: {} }), true);
   assert.equal(needsShot({ name: 'SCREEN_CHANGED', data: {} }), true);
+});
+
+test('needsShot true for the four DESKTOP_CAPTURE_* events, false for DESKTOP_FRAME', () => {
+  assert.equal(needsShot({ name: 'DESKTOP_CAPTURE_STARTED', data: {} }), true);
+  assert.equal(needsShot({ name: 'DESKTOP_CAPTURE_DECLINED', data: {} }), true);
+  assert.equal(needsShot({ name: 'DESKTOP_CAPTURE_STOPPED', data: {} }), true);
+  assert.equal(needsShot({ name: 'DESKTOP_CAPTURE_FAILED', data: {} }), true);
+  assert.equal(needsShot({ name: 'DESKTOP_FRAME', data: {} }), false);
+});
+
+test('needsDesktopFrame true for FOCUS_LEFT_CHROME, FOCUS_RETURNED, PERIODIC, DESKTOP_FRAME; false for TAB_SWITCH and SESSION_ARMED', () => {
+  assert.equal(needsDesktopFrame({ name: 'FOCUS_LEFT_CHROME' }), true);
+  assert.equal(needsDesktopFrame({ name: 'FOCUS_RETURNED' }), true);
+  assert.equal(needsDesktopFrame({ name: 'PERIODIC' }), true);
+  assert.equal(needsDesktopFrame({ name: 'DESKTOP_FRAME' }), true);
+  assert.equal(needsDesktopFrame({ name: 'TAB_SWITCH' }), false);
+  assert.equal(needsDesktopFrame({ name: 'SESSION_ARMED' }), false);
 });
 
 test('makeEvent shapes the record and omits absent ids', () => {

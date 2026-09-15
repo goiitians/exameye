@@ -4,12 +4,19 @@ export const SHOT_EVENTS = new Set([
   'DOWNLOAD_STARTED', 'PERIODIC',
   'START_BUTTON_CLICKED', 'END_BUTTON_CLICKED', 'END_MARKER_SEEN', 'RESULT_PAGE',
   'MAX_TIME_REACHED', 'SCREEN_CHANGED',
+  'DESKTOP_CAPTURE_STARTED', 'DESKTOP_CAPTURE_DECLINED', 'DESKTOP_CAPTURE_STOPPED', 'DESKTOP_CAPTURE_FAILED',
 ]);
 
 export function needsShot(ev) {
   if (ev.name === 'PARALLEL_PAGE') return ev.data.trigger === 'activated';
   if (ev.name === 'SESSION_DISARMED') return ev.data.outcome !== 'ABANDONED';
   return SHOT_EVENTS.has(ev.name);
+}
+
+export const DESKTOP_FRAME_EVENTS = new Set(['FOCUS_LEFT_CHROME', 'FOCUS_RETURNED', 'PERIODIC', 'DESKTOP_FRAME']);
+
+export function needsDesktopFrame(ev) {
+  return DESKTOP_FRAME_EVENTS.has(ev.name);
 }
 
 export function makeEvent({ seq, at, name, tabId, windowId, data = {} }) {

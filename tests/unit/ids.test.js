@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { stamp, tzOffset, fmtLocal, fmtDuration, sanitizeSeat, sessionId, shotFile } from '../../src/core/ids.js';
+import { stamp, tzOffset, fmtLocal, fmtDuration, sanitizeSeat, sessionId, shotFile, desktopShotFile } from '../../src/core/ids.js';
 
 const d = new Date(2026, 8, 12, 9, 15, 2);
 
@@ -28,4 +28,9 @@ test('seat is sanitised for file names, raw form untouched elsewhere', () => {
 test('sessionId and shotFile', () => {
   assert.equal(sessionId(d, 'A17'), '20260912-091502_A17');
   assert.equal(shotFile(d, 'TAB_SWITCH'), 'screenshots/20260912-091502_TAB_SWITCH.jpg');
+});
+
+test('desktopShotFile puts frames under screenshots/desktop/', () => {
+  assert.match(desktopShotFile(d, 'PERIODIC'), /^screenshots\/desktop\/\d{8}-\d{6}_PERIODIC\.jpg$/);
+  assert.equal(desktopShotFile(d, 'PERIODIC'), shotFile(d, 'PERIODIC').replace('screenshots/', 'screenshots/desktop/'));
 });

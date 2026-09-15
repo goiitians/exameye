@@ -32,3 +32,7 @@ export function sessionId(date, seat) {
 export function shotFile(date, eventName) {
   return `screenshots/${stamp(date)}_${eventName}.jpg`;
 }
+
+export function desktopShotFile(date, eventName) {
+  return `screenshots/desktop/${stamp(date)}_${eventName}.jpg`;
+}
