@@ -48,6 +48,7 @@ export function renderSummaryHtml({ session, outcome, endedAt, events, tally, in
     }
   }
   const files = [...fileIndex.keys()];
+  const fid = new Map(files.map((f, i) => [f, `s${i + 1}`]));
   const src = (file) => inlineShots ? `data:image/jpeg;base64,${shots[file] || ''}` : file;
   const d = tally.durations;
   const a = tally.attribution;
@@ -68,11 +69,13 @@ export function renderSummaryHtml({ session, outcome, endedAt, events, tally, in
   const phaseRows = [row(['Exam', `${clock(session.startedAt)} - ${clock(examEnd)}`, fmtDuration(examEnd - session.startedAt), `${examShots} screenshots`])];
   if (showTail) phaseRows.push(row(['Post-submit tail', `${clock(session.examEndedAt)} - ${clock(endedAt)}`, fmtDuration(endedAt - session.examEndedAt), `${tally.tail.shots} screenshots`]));
 
-  const timeline = events.map(e => `<tr class="${e.data?.phase === 'tail' ? 'tail' : ''}"><td class="n">${e.seq}</td><td class="t">${h(clock(e.t))}</td><td class="ev">${h(e.name)}${e.data?.phase === 'tail' ? ' <span class="tag">tail</span>' : ''}</td><td class="d">${details(e.data)}</td><td class="sh">${e.shot ? `<a href="#${h(e.shot)}">tab</a>` : ''}${desktopFrame(e) ? ` <a href="#${h(desktopFrame(e))}">desktop</a>` : ''}</td></tr>`);
+  const timeline = events.map(e => `<tr class="${e.data?.phase === 'tail' ? 'tail' : ''}"><td class="n">${e.seq}</td><td class="t">${h(clock(e.t))}</td><td class="ev">${h(e.name)}${e.data?.phase === 'tail' ? ' <span class="tag">tail</span>' : ''}</td><td class="d">${details(e.data)}</td><td class="sh">${e.shot ? `<a href="#${fid.get(e.shot)}">tab</a>` : ''}${desktopFrame(e) ? ` <a href="#${fid.get(desktopFrame(e))}">desktop</a>` : ''}</td></tr>`);
 
-  const gallery = files.map(f => {
+  const gallery = files.map((f, i) => {
     const m = fileIndex.get(f);
-    return `<figure id="${h(f)}"><a href="#${h(f)}"><img src="${h(src(f))}" alt="${h(f)}"></a><figcaption><span class="tag ${m.kind}">${m.kind}</span> ${h(m.event)} <span class="muted">${h(clock(m.t))}${m.phase === 'tail' ? ' tail' : ''}</span><br><span class="muted">${h(f)}</span></figcaption></figure>`;
+    const id = fid.get(f);
+    const nav = `<nav class="lbnav"><span class="count">${i + 1} / ${files.length}</span>${i > 0 ? `<a class="prev" href="#${fid.get(files[i - 1])}">&#8249; Prev</a>` : '<span class="prev off">&#8249; Prev</span>'}${i < files.length - 1 ? `<a class="next" href="#${fid.get(files[i + 1])}">Next &#8250;</a>` : '<span class="next off">Next &#8250;</span>'}<a class="close" href="#_">&#10005; Close</a></nav>`;
+    return `<figure id="${id}">${nav}<a class="open" href="#${id}"><img src="${h(src(f))}" alt="${h(f)}"></a><figcaption><span class="tag ${m.kind}">${m.kind}</span> ${h(m.event)} <span class="muted">${h(clock(m.t))}${m.phase === 'tail' ? ' tail' : ''}</span><br><span class="muted">${h(f)}</span></figcaption></figure>`;
   }).join('\n');
 
   return `<!doctype html>
@@ -92,8 +95,10 @@ table{border-collapse:collapse;width:100%;background:var(--card);border:1px soli
 td.n,td.t{white-space:nowrap;color:var(--muted);font-variant-numeric:tabular-nums}td.ev{white-space:nowrap;font-weight:600}td.d{color:var(--ink2);word-break:break-word}td.sh a{margin-right:6px}.kv{margin-right:10px}.kv b{color:var(--ink);font-weight:500}
 .tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:999px;background:#e8eefb;color:#1d3f7a;vertical-align:middle}.tag.desktop{background:#fdebd9;color:#7a3a10}.tag.tab{background:#e8eefb;color:#1d3f7a}
 .muted{color:var(--muted)}.empty{color:var(--muted);margin:6px 0 0}a{color:var(--blue)}
-.gallery{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}figure{margin:0;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px}figure img{width:100%;height:auto;display:block;border-radius:6px;cursor:zoom-in}figcaption{font-size:12px;margin-top:6px;word-break:break-all}
-figure:target{grid-column:1/-1;border-color:var(--blue)}figure:target img{cursor:zoom-out}
+.gallery{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}figure{margin:0;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px}figure img{width:100%;height:auto;display:block;border-radius:6px;cursor:zoom-in}figcaption{font-size:12px;margin-top:6px;word-break:break-all}.lbnav{display:none}
+figure:target{position:fixed;inset:0;z-index:10;margin:0;border:0;border-radius:0;padding:16px 24px;background:rgba(10,12,16,.94);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px}figure:target .open{pointer-events:none}figure:target img{width:auto;max-width:96vw;max-height:78vh;border-radius:4px;cursor:default;box-shadow:0 8px 40px rgba(0,0,0,.6)}figure:target figcaption{color:#fff;font-size:14px;text-align:center}figure:target figcaption .muted{color:#c3c2b7}
+figure:target .lbnav{display:flex;gap:18px;align-items:center;color:#c3c2b7;font-size:14px}.lbnav a{color:#fff;text-decoration:none;padding:6px 12px;border:1px solid #555;border-radius:999px}.lbnav a:hover{border-color:#fff}.lbnav .off{opacity:.35;padding:6px 12px}.lbnav .close{margin-left:12px}
+body:has(figure:target){overflow:hidden}
 @media print{header{background:#0f2a4a!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}th{position:static}.gallery{grid-template-columns:repeat(2,1fr)}figure{break-inside:avoid}}
 </style>
 <header><h1>ExamEye</h1><span class="id">${h(session.id)}</span><span>Seat ${h(session.seat)}</span><span class="sp"></span>${badge(OUTCOME[outcome] || 'warning', outcome)} ${integrity.ok ? badge('good', `Log chain OK (${integrity.lines} lines)`) : badge('critical', `Log chain BROKEN at line ${integrity.firstBad}`)}</header>

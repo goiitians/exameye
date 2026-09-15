@@ -48,8 +48,8 @@ test('timeline row links the desktop frame and the screenshots section includes 
   const evs = [...events, { seq: 3, t: started + 2000, name: 'FOCUS_LEFT_CHROME', data: { desktopShot: 'screenshots/desktop/x.jpg' }, shot: null }];
   const shots = { ...ctx.shots, 'screenshots/desktop/x.jpg': '/9j/BBB' };
   const htmlInline = renderSummaryHtml({ ...ctx, events: evs, tally: tally(evs), shots, inlineShots: true });
-  assert.ok(htmlInline.includes('href="#screenshots/desktop/x.jpg"'));
-  assert.ok(htmlInline.includes('<figure id="screenshots/desktop/x.jpg">'));
+  const id = htmlInline.match(/<figure id="(s\d+)"[^>]*>(?:(?!<\/figure>).)*screenshots\/desktop\/x\.jpg/s)[1];
+  assert.ok(htmlInline.includes(`<a href="#${id}">desktop</a>`), 'the timeline desktop link must target that file\'s figure');
   assert.ok(htmlInline.includes('<span class="tag desktop">desktop</span>'));
   assert.ok(htmlInline.includes('<img src="data:image/jpeg;base64,/9j/BBB"'));
 
@@ -88,4 +88,27 @@ test('dashboard: tail-phase rows are tagged and no image is duplicated between t
   assert.match(html, /<tr class="tail">.*DESKTOP_FRAME <span class="tag">tail<\/span>/);
   assert.equal(html.split('/9j/CCC').length - 1, 1);
   assert.equal(html.split('/9j/AAA').length - 1, 1);
+});
+
+test('lightbox: every figure carries close, prev/next through the set and a counter; no scripts, no duplicated images', () => {
+  const evs = [
+    ...events,
+    { seq: 3, t: started + 2000, name: 'FOCUS_LEFT_CHROME', data: { desktopShot: 'screenshots/desktop/x.jpg' }, shot: 'screenshots/s3.jpg' },
+    { seq: 4, t: started + 3000, name: 'PERIODIC', data: {}, shot: 'screenshots/s4.jpg' },
+  ];
+  const shots = { ...ctx.shots, 'screenshots/desktop/x.jpg': '/9j/BBB', 'screenshots/s3.jpg': '/9j/CCC', 'screenshots/s4.jpg': '/9j/DDD' };
+  const html = renderSummaryHtml({ ...ctx, events: evs, tally: tally(evs), shots, inlineShots: true });
+  const figures = [...html.matchAll(/<figure id="(s\d+)"/g)].map(m => m[1]);
+  assert.deepEqual(figures, ['s1', 's2', 's3', 's4']);
+  for (const [i, id] of figures.entries()) {
+    const fig = html.slice(html.indexOf(`<figure id="${id}"`), html.indexOf('</figure>', html.indexOf(`<figure id="${id}"`)));
+    assert.ok(fig.includes('href="#_"'), `${id} close`);
+    assert.ok(fig.includes(`${i + 1} / 4`), `${id} counter`);
+    if (i > 0) assert.ok(fig.includes(`href="#${figures[i - 1]}"`), `${id} prev`); else assert.ok(!/class="prev"/.test(fig));
+    if (i < 3) assert.ok(fig.includes(`href="#${figures[i + 1]}"`), `${id} next`); else assert.ok(!/class="next"/.test(fig));
+  }
+  assert.ok(html.includes('figure:target{position:fixed'));
+  assert.ok(html.includes('body:has(figure:target){overflow:hidden}'));
+  assert.ok(!/<script/i.test(html));
+  for (const b64 of Object.values(shots)) assert.equal(html.split(b64).length - 1, 1, 'each image embedded exactly once');
 });
