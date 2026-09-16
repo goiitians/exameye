@@ -1,39 +1,177 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>ExamEye options</title>
+<title>ExamEye setup</title>
 <style>
-  body { font: 14px system-ui; margin: 24px; max-width: 640px; }
-  label { display: block; margin: 12px 0 4px; font-weight: 600; }
-  input { width: 100%; padding: 6px; box-sizing: border-box; }
-  select { width: 100%; padding: 6px; }
-  button { margin-top: 16px; padding: 8px 16px; }
-  #status { white-space: pre-line; margin-top: 12px; }
+  :root { --surface: #fcfcfb; --card: #ffffff; --line: #e6e4df; --ink: #0b0b0b; --ink2: #52514e; --muted: #898781; --blue: #2f63c9; --good: #0ca30c; --critical: #d03b3b; --warn-bg: #fff4e5; --warn-line: #f0b25a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--surface); color: var(--ink); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { background: #0f2a4a; color: #fff; padding: 22px 28px; }
+  header h1 { margin: 0; font-size: 20px; font-weight: 600; }
+  header p { margin: 6px 0 0; opacity: .85; }
+  main { max-width: 720px; margin: 0 auto; padding: 20px 20px 96px; }
+  .banner { background: var(--warn-bg); border: 1px solid var(--warn-line); border-left: 5px solid var(--warn-line); border-radius: 10px; padding: 12px 14px; margin: 0 0 16px; }
+  .banner b { display: block; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px 6px; margin: 0 0 16px; }
+  .card h2 { margin: 0 0 2px; font-size: 15px; }
+  .card h2 span { display: inline-block; min-width: 22px; height: 22px; margin-right: 8px; border-radius: 50%; background: var(--blue); color: #fff; font-size: 12px; line-height: 22px; text-align: center; }
+  .card > p.hint { margin: 0 0 12px; color: var(--ink2); }
+  .field { margin: 0 0 14px; }
+  label { display: block; font-weight: 600; margin: 0 0 4px; }
+  label small { font-weight: 400; color: var(--muted); }
+  input, select { width: 100%; padding: 8px 10px; font: inherit; color: var(--ink); background: #fff; border: 1px solid #c9c6bf; border-radius: 6px; }
+  input:focus, select:focus { outline: 2px solid var(--blue); outline-offset: 1px; border-color: var(--blue); }
+  .help { margin: 4px 0 0; color: var(--ink2); font-size: 13px; }
+  .error { margin: 4px 0 0; color: var(--critical); font-size: 13px; font-weight: 600; }
+  .error:not([hidden]) + .help { display: none; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+  @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
+  .savebar { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top: 1px solid var(--line); padding: 12px 20px; }
+  .savebar .inner { max-width: 720px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+  button { padding: 9px 18px; font: inherit; font-weight: 600; color: #fff; background: var(--blue); border: 0; border-radius: 6px; cursor: pointer; }
+  button:hover { background: #244f9f; }
+  #status { font-weight: 600; white-space: pre-line; }
   #status.ok { color: #070; }
   #status.err { color: #a00; }
-  #dest, #downloads-note { margin-top: 12px; color: #444; font-size: 13px; }
+  #dest { flex-basis: 100%; color: var(--ink2); font-size: 13px; }
+  .note { color: var(--ink2); font-size: 13px; }
 </style>
-<h1>ExamEye configuration</h1>
-<form id="form">
-  <label>Exam start URL prefix<input name="startPrefix" placeholder="https://exam.example.com/start"></label>
-  <label>Exam in-progress URL prefix (optional; blank = start page origin)<input name="examPrefix"></label>
-  <label>Result URL prefix (optional if an end button or marker is set)<input name="resultPrefix" placeholder="https://exam.example.com/result"></label>
-  <label>Start button label (optional; blank = arm on start URL)<input name="startButton"></label>
-  <label>End button label(s), comma-separated (optional)<input name="endButton"></label>
-  <label>Submitted-screen marker text (optional; must appear only after submission)<input name="endMarker"></label>
-  <label>Maximum paper length (minutes; 0 = no backstop)<input name="maxMin" type="number" min="0" max="600"></label>
-  <label>Post-submit tail (minutes; 0 = end immediately)<input name="tailMin" type="number" min="0" max="60"></label>
-  <label>Seat / Centre ID<input name="seat"></label>
-  <label>Output subfolder under Downloads<input name="subfolder"></label>
-  <label>Periodic screenshot interval (minutes)<input name="shotIntervalMin" type="number" min="1" max="60"></label>
-  <label>Abandon session after exam tab gone (minutes)<input name="abandonMin" type="number" min="1" max="120"></label>
-  <label>Desktop capture (screen frames while focus leaves Chrome)<select name="desktopCapture">
-    <option value="on">on</option>
-    <option value="off">off</option>
-  </select></label>
-  <label>Re-ask after a declined share (minutes; 0 = ask once)<input name="desktopRepromptMin" type="number" min="0" max="60"></label>
-  <button type="submit">Save</button>
-</form>
-<div id="status"></div>
-<div id="dest"></div>
-<div id="downloads-note">Chrome's "Ask where to save each file" (chrome://settings/downloads) must be off, or every screenshot and log will prompt for a save location.</div>
+<header>
+  <h1>ExamEye setup</h1>
+  <p>Fill in the five sections once per machine, then click Save. Recording starts and stops on its own when a paper opens.</p>
+</header>
+<main>
+  <div id="recording" class="banner" hidden>
+    <b>A paper is being recorded on this machine right now.</b>
+    Anything you save here is written into that paper's log, with the names of the fields you changed. The folder for the paper in progress does not change.
+  </div>
+  <form id="form" novalidate>
+    <section class="card">
+      <h2><span>1</span>Exam website</h2>
+      <p class="hint">Which web addresses belong to the exam. ExamEye starts when the start page opens and treats everything on the same site as part of the paper.</p>
+      <div class="field">
+        <label for="startPrefix">Exam start page</label>
+        <input id="startPrefix" name="startPrefix" placeholder="https://exam.example.com/start">
+        <p class="error" role="alert" id="err-startPrefix" hidden></p>
+        <p class="help">The address every candidate lands on first, up to but not including the part that differs per candidate.</p>
+      </div>
+      <div class="field">
+        <label for="examPrefix">Paper pages <small>(optional)</small></label>
+        <input id="examPrefix" name="examPrefix" placeholder="leave blank to use the start page's site">
+        <p class="error" role="alert" id="err-examPrefix" hidden></p>
+        <p class="help">Only needed when the questions are served from a different address than the start page.</p>
+      </div>
+      <div class="field">
+        <label for="resultPrefix">Result page <small>(optional)</small></label>
+        <input id="resultPrefix" name="resultPrefix" placeholder="https://exam.example.com/result">
+        <p class="error" role="alert" id="err-resultPrefix" hidden></p>
+        <p class="help">The address shown once the paper is submitted. Can be left blank when a submit button or a submitted-screen phrase is set in section 2.</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2><span>2</span>How the paper starts and ends</h2>
+      <p class="hint">ExamEye needs one way to notice the end of the paper: a submit button, a phrase on the "submitted" screen, or the result page above.</p>
+      <div class="field">
+        <label for="startButton">Start button label <small>(optional)</small></label>
+        <input id="startButton" name="startButton" placeholder="e.g. Start test">
+        <p class="error" role="alert" id="err-startButton" hidden></p>
+        <p class="help">The exact text on the button that starts the paper, for platforms where the page address does not change. Leave blank to start recording as soon as the start page opens.</p>
+      </div>
+      <div class="field">
+        <label for="endButton">Submit button label(s) <small>(optional)</small></label>
+        <input id="endButton" name="endButton" placeholder="e.g. Finish, Confirm submission">
+        <p class="error" role="alert" id="err-endButton" hidden></p>
+        <p class="help">The text on the button that finishes the paper. If the platform asks "Are you sure?", use the text of that confirm button. Separate several with commas.</p>
+      </div>
+      <div class="field">
+        <label for="endMarker">Submitted-screen phrase <small>(optional)</small></label>
+        <input id="endMarker" name="endMarker" placeholder="e.g. Your answers have been submitted">
+        <p class="error" role="alert" id="err-endMarker" hidden></p>
+        <p class="help">A sentence that appears only on the "your answers have been submitted" screen and nowhere else in the paper.</p>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="maxMin">Maximum paper length <small>(minutes)</small></label>
+          <input id="maxMin" name="maxMin" type="number" min="0" max="600">
+          <p class="error" role="alert" id="err-maxMin" hidden></p>
+          <p class="help">A backstop: the recording ends this long after it started even if no submit was seen. 0 turns it off. Use the scheduled length plus a small margin.</p>
+        </div>
+        <div class="field">
+          <label for="tailMin">Keep watching after submit <small>(minutes)</small></label>
+          <input id="tailMin" name="tailMin" type="number" min="0" max="60">
+          <p class="error" role="alert" id="err-tailMin" hidden></p>
+          <p class="help">How long to keep recording after the paper is submitted, to catch what happens next. 0 stops immediately.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2><span>3</span>This machine</h2>
+      <p class="hint">How the recordings from this desk are named and where they are kept.</p>
+      <div class="row">
+        <div class="field">
+          <label for="seat">Seat or centre ID</label>
+          <input id="seat" name="seat" placeholder="e.g. C12-S07">
+          <p class="error" role="alert" id="err-seat" hidden></p>
+          <p class="help">Goes into every folder name so a recording can be matched to this desk.</p>
+        </div>
+        <div class="field">
+          <label for="subfolder">Folder name under Downloads</label>
+          <input id="subfolder" name="subfolder">
+          <p class="error" role="alert" id="err-subfolder" hidden></p>
+          <p class="help">All recordings go into this folder inside Chrome's download location, one sub-folder per paper.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2><span>4</span>Recording</h2>
+      <p class="hint">Screenshots are taken whenever something happens (a tab switch, a copy, a window change) and at a routine interval.</p>
+      <div class="row">
+        <div class="field">
+          <label for="shotIntervalMin">Routine screenshot every <small>(minutes)</small></label>
+          <input id="shotIntervalMin" name="shotIntervalMin" type="number" min="1" max="60">
+          <p class="error" role="alert" id="err-shotIntervalMin" hidden></p>
+          <p class="help">A picture of the exam tab at this interval, on top of the ones taken when something happens.</p>
+        </div>
+        <div class="field">
+          <label for="abandonMin">Give up after the exam tab is gone for <small>(minutes)</small></label>
+          <input id="abandonMin" name="abandonMin" type="number" min="1" max="120">
+          <p class="error" role="alert" id="err-abandonMin" hidden></p>
+          <p class="help">If the exam tab is closed and does not come back within this time, the paper is closed as abandoned.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2><span>5</span>Screen capture</h2>
+      <p class="hint">Besides the exam tab, ExamEye can photograph the whole screen while the candidate is away from Chrome. The candidate is asked once per paper to share their screen.</p>
+      <div class="field">
+        <label for="desktopCapture">Capture the whole screen when the candidate leaves Chrome</label>
+        <select id="desktopCapture" name="desktopCapture">
+          <option value="on">On (recommended)</option>
+          <option value="off">Off</option>
+        </select>
+        <p class="error" role="alert" id="err-desktopCapture" hidden></p>
+        <p class="help">Frames are taken only while Chrome is not the active window and at each routine screenshot. Set to Off only where the centre forbids screen recording.</p>
+      </div>
+      <div class="field">
+        <label for="desktopRepromptMin">Ask again after a refusal <small>(minutes)</small></label>
+        <input id="desktopRepromptMin" name="desktopRepromptMin" type="number" min="0" max="60">
+        <p class="error" role="alert" id="err-desktopRepromptMin" hidden></p>
+        <p class="help">If the candidate cancels the share dialog, ask again after this long. 0 asks only once.</p>
+      </div>
+    </section>
+
+    <p class="note">Chrome's "Ask where to save each file before downloading" (chrome://settings/downloads) must be off, or every screenshot and log will prompt for a save location.</p>
+
+    <div class="savebar">
+      <div class="inner">
+        <button type="submit">Save settings</button>
+        <span id="status" role="status" aria-live="polite"></span>
+        <span id="dest"></span>
+      </div>
+    </div>
+  </form>
+</main>
 <script type="module" src="options.js"></script>
