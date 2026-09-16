@@ -565,6 +565,9 @@ primary screen the candidate picked); nothing here changes when a session starts
   `pending`; on reject → keep, record `meta.lastFlushError`. `meta.lastFlushAt` set at the end.
   Because SW may die mid-flush, `pending` is only mutated *after* each successful download call;
   anything else replays on the next flush.
+- **Single write per dispatch:** each dispatch persists `pending`, `session`, `events`, `lines`,
+  `lastHash` and `meta.lastSeenAt` (plus the END snapshot) in one `storage.local.set`, so a
+  service-worker kill mid-step loses the whole input or nothing.
 - **Download UI suppression:** at SW boot call `chrome.downloads.setUiOptions({enabled:false})`
   (permission `downloads.ui`, Chrome 105+; wrapped in try/catch for Edge). Also
   `downloads.onChanged`: when `delta.state.current==='complete'` and the item's

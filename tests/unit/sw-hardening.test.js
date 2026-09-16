@@ -49,3 +49,17 @@ test('an input timestamped more than 5 s before the last seen time logs CLOCK_BA
   await sw.dispatch({ kind: 'NAV', tabId: 1, windowId: 3, url: 'https://e.x/result', at: 209000 });
   assert.equal((await get('session')).session.state, 'IDLE');
 });
+
+test('one dispatch writes pending, session, events, lines, lastHash and meta in a single storage call', async () => {
+  await sw.dispatch({ kind: 'NAV', tabId: 1, windowId: 3, url: 'https://e.x/start', at: 300000 });
+  const realSet = chrome.storage.local.set.bind(chrome.storage.local);
+  const calls = [];
+  chrome.storage.local.set = async (obj) => { calls.push(Object.keys(obj).sort()); return realSet(obj); };
+  try {
+    await sw.dispatch({ kind: 'NAV', tabId: 1, windowId: 3, url: 'https://e.x/q/8', at: 301000 });
+  } finally { chrome.storage.local.set = realSet; }
+  const want = ['events', 'lastHash', 'lines', 'meta', 'pending', 'session'];
+  assert.ok(calls.some(k => want.every(w => k.includes(w))), JSON.stringify(calls));
+  assert.equal((await get('meta')).meta.lastSeenAt, 301000);
+  await sw.dispatch({ kind: 'NAV', tabId: 1, windowId: 3, url: 'https://e.x/result', at: 302000 });
+});

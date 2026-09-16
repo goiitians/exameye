@@ -111,28 +111,28 @@ async function dispatchNow(input) {
     lines.push(line);
     events.push(ev);
   }
+  const batch = { session: r.session, events, lines, lastHash };
   if (newEvents.length) {
     const sess = r.session.state !== 'IDLE' ? r.session : session;
     const base = `${sess.subfolder ?? cfg.subfolder}/${sess.id}`;
     let { pending = {} } = await store.get('pending');
     pending = putText(pending, `${base}/log.txt`, 'text/plain', lines.join('\n') + '\n');
     for (const s of added) pending = putBase64(pending, `${base}/${s.file}`, 'image/jpeg', s.b64);
-    await store.set({ pending });
+    batch.pending = pending;
   }
   const endEffect = r.effects.find(e => e.type === 'END');
   let pendingEnd;
+  const { meta: currentMeta = {} } = await store.get('meta');
+  batch.meta = { ...currentMeta, lastSeenAt: input.at };
   if (endEffect) {
     const { shots: endShots = {} } = await store.get('shots');
     pendingEnd = { outcome: endEffect.outcome, session: endEffect.session, events: [...events], lines: [...lines], shots: endShots };
-    const { meta: currentMeta = {} } = await store.get('meta');
     // events/lines/shots are cleared here, atomically with the pendingEnd snapshot that now
     // holds them: leaving the live clear for endSession's own (later, possibly much later)
     // final write would risk wiping a NEW session armed in between (see below).
-    await store.set({ session: r.session, events: [], lines: [], shots: {}, lastHash, meta: { ...currentMeta, pendingEnd } });
-  } else {
-    await store.set({ session: r.session, events, lines, lastHash });
+    Object.assign(batch, { events: [], lines: [], shots: {}, meta: { ...batch.meta, pendingEnd } });
   }
-  await store.patchMeta({ lastSeenAt: input.at });
+  await store.set(batch);
   await runEffects(r.effects, cfg, pendingEnd);
   if (newEvents.length) await flushNow();
   if (r.session.state === 'ARMED' && session.state === 'IDLE') {
