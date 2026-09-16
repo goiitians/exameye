@@ -70,7 +70,15 @@ function beginTail(s, out, emit, input, cfg, outcome, trigger, label) {
   out.effects.push({ type: 'CLOSING_ALARM_SET', when: s.closingUntil });
 }
 
+function trackWindow(s, input, emit) {
+  if (input.windowId === undefined || input.windowId < 0 || input.windowId === s.examWindowId) return;
+  emit('EXAM_WINDOW_MOVED', { from: s.examWindowId, to: input.windowId }, input);
+  s.examWindowId = input.windowId;
+  s.windowState = 'normal';
+}
+
 function examTabNav(s, input, cfg, emit, out) {
+  trackWindow(s, input, emit);
   const cls = classify(input.url, cfg);
   if (cls === 'result') {
     if (s.state === 'CLOSING') {
@@ -181,6 +189,7 @@ const CS_PROBE = new Set(['VISIBILITY', 'BLUR', 'FOCUS']);
 Object.assign(HANDLERS, {
   TAB_ACTIVATED(s, input, cfg, emit) {
     if (input.tabId === s.examTabId) {
+      trackWindow(s, input, emit);
       if (s.away.tabAt !== null) { emit('TAB_RETURN', { awayMs: input.at - s.away.tabAt }); s.away.tabAt = null; s.away.tabId = null; s.away.tabUrl = null; }
       return;
     }

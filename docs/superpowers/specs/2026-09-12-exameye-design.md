@@ -239,6 +239,10 @@ the ids; the CS names that drive the state machine are `START_CLICK{label}`, `EN
 | ARMED | CLOSING_TIMER | — | none | ARMED (stale alarm) |
 | ARMED | PERIODIC | — | `PERIODIC{}` | ARMED |
 
+**Window tracking:** in the ARMED/CLOSING handling of `TAB_ACTIVATED` and `NAV` for the exam
+tab, if the input's windowId differs from `examWindowId` (and is not −1), `EXAM_WINDOW_MOVED`
+is emitted first, `examWindowId` follows the tab and `windowState` resets to `normal`.
+
 **Tail start** (shared by the four triggers above): set `outcome`, `trigger`, `triggerLabel`,
 `examEndedAt = at`; effect `MAX_ALARM_CLEAR`. If `tailMin === 0`: emit
 `SESSION_DISARMED{outcome,trigger,label?,url?}` and effect `END{outcome}` → IDLE. Otherwise
@@ -323,6 +327,7 @@ Field `data` per event; every event also has `seq`, `ts` (ISO 8601 UTC), `t` (ep
 | MAX_TIME_REACHED | alarm `max` | maxAt | yes (exam window) |
 | SCREEN_CHANGED | CS `SCREEN_CHANGED` while CLOSING, only when the capture is kept (§6) | hash, phase | yes (always: the event exists only because a new shot was kept) |
 | EXAM_NAV | onCommitted / onHistoryStateUpdated / onReferenceFragmentUpdated on exam tab | url, adopted? | no |
+| EXAM_WINDOW_MOVED | tabs.onActivated / onCommitted on the exam tab with a different windowId | from, to | no |
 | EXAM_TAB_CLOSED | tabs.onRemoved / TICK backstop | — | no |
 | TAB_SWITCH | tabs.onActivated | toTabId, toUrl, toTitle, toWindowId, incognito | yes |
 | TAB_RETURN | tabs.onActivated (exam tab) | awayMs | no |
