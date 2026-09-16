@@ -21,6 +21,7 @@ test('needsShot follows the catalogue', () => {
   assert.equal(needsShot({ name: 'RESULT_PAGE', data: {} }), true);
   assert.equal(needsShot({ name: 'MAX_TIME_REACHED', data: {} }), true);
   assert.equal(needsShot({ name: 'SCREEN_CHANGED', data: {} }), true);
+  assert.equal(needsShot({ name: 'DRAG', data: {} }), true);
 });
 
 test('needsShot true for the four DESKTOP_CAPTURE_* events, false for DESKTOP_FRAME', () => {

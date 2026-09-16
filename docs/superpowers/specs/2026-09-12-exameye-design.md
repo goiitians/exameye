@@ -349,6 +349,7 @@ Field `data` per event; every event also has `seq`, `ts` (ISO 8601 UTC), `t` (ep
 | COPY / CUT / PASTE | CS clipboard events | len (selection or pasted text length; content never recorded) | yes |
 | CONTEXTMENU | CS contextmenu | tag (target element tag) | yes |
 | PRINT | CS beforeprint | — | yes |
+| DRAG | CS dragstart | len (selection length), tag | yes |
 | DEVTOOLS_OPENED | CS resize heuristic (outer−inner ≥ 160 px) | dw, dh | yes |
 | IDLE_START | chrome.idle.onStateChanged | state (`idle`/`locked`) | no |
 | IDLE_END | chrome.idle.onStateChanged | idleMs | no |
@@ -395,7 +396,7 @@ notification Chromium observes, so the real trigger (idle timeout / hot corner) 
 during centre dry-run (docs/centre-setup.md step 6). The `idle` fallback exists for that case.
 
 Content-script names on the wire (`CS` input): `COPY`, `CUT`, `PASTE`, `CONTEXTMENU`, `PRINT`,
-`FULLSCREEN_EXIT`, `DEVTOOLS`, `VISIBILITY{hidden}`, `BLUR`, `FOCUS`, `START_CLICK{label}`,
+`DRAG{len,tag}`, `FULLSCREEN_EXIT`, `DEVTOOLS`, `VISIBILITY{hidden}`, `BLUR`, `FOCUS`, `START_CLICK{label}`,
 `END_CLICK{label}`, `END_MARKER{marker}`, `SCREEN_CHANGED{}`. The content script runs the marker
 check and `SCREEN_CHANGED` on a trailing 1 s debounce of DOM mutations with a 5 s ceiling, so a
 page element that updates every second (a countdown) cannot postpone it forever.

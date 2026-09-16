@@ -126,6 +126,11 @@ test('clipboard events report lengths only', () => {
   assert.deepEqual(last(), { type: 'cs', name: 'PASTE', data: { len: 11 } });
 });
 
+test('dragstart reports selection length and the dragged element tag', () => {
+  L['doc:dragstart']({ target: { tagName: 'P' } });
+  assert.deepEqual(last(), { type: 'cs', name: 'DRAG', data: { len: 3, tag: 'P' } });
+});
+
 test('contextmenu, print, visibility, blur, focus', () => {
   L['doc:contextmenu']({ target: { tagName: 'TEXTAREA' } });
   assert.deepEqual(last(), { type: 'cs', name: 'CONTEXTMENU', data: { tag: 'TEXTAREA' } });

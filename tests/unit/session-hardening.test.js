@@ -50,3 +50,11 @@ test('CONFIG_CHANGED with keys is logged while not IDLE; empty keys and IDLE emi
 test('arm freezes the subfolder into the session', () => {
   assert.equal(arm().session.subfolder, 'ExamEye');
 });
+
+test('DRAG from the exam tab is logged with its data; from another tab it is dropped', () => {
+  let r = reduce(arm().session, cs('DRAG', { len: 12, tag: 'P' }), cfg);
+  assert.deepEqual(names(r), ['DRAG']);
+  assert.deepEqual(r.events[0].data, { len: 12, tag: 'P' });
+  r = reduce(r.session, cs('DRAG', { len: 12, tag: 'P' }, 42, 'https://g.x/'), cfg);
+  assert.deepEqual(names(r), []);
+});

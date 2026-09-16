@@ -23,6 +23,7 @@ const FLAGS = [
   ['CUT', 'Cut', 'serious'],
   ['PASTE', 'Paste', 'serious'],
   ['PRINT', 'Print', 'serious'],
+  ['DRAG', 'Drag out', 'serious'],
   ['DOWNLOAD_STARTED', 'Downloads', 'serious'],
   ['WINDOW_MINIMIZED', 'Window minimised', 'warning'],
   ['FULLSCREEN_EXIT', 'Fullscreen exits', 'warning'],
