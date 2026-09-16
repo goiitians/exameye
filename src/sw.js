@@ -21,6 +21,7 @@ import { renderSummaryText } from './core/summary-text.js';
 import { renderSummaryHtml } from './core/summary-html.js';
 
 const GAP_MS = 90000;
+const CLOCK_SLACK_MS = 5000;
 const SHOT_GAP_MS = 2000;
 const PAINT_WAIT_MS = 1500;
 const FOCUS_SETTLE_MS = 500;
@@ -80,6 +81,11 @@ async function dispatchNow(input) {
     const g = reduce(session, { kind: 'GAP', at: input.at, lastSeenAt: meta.lastSeenAt, reason: input.kind === 'STARTUP' ? 'browser-restart' : 'sw-restart' }, cfg);
     session = g.session;
     newEvents.push(...g.events);
+  }
+  if (session.state !== 'IDLE' && meta.lastSeenAt && input.at < meta.lastSeenAt - CLOCK_SLACK_MS) {
+    const c = reduce(session, { kind: 'CLOCK', at: input.at, lastSeenAt: meta.lastSeenAt }, cfg);
+    session = c.session;
+    newEvents.push(...c.events);
   }
   const r = reduce(session, input, cfg);
   newEvents.push(...r.events);

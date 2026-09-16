@@ -35,3 +35,17 @@ test('subfolder is frozen at arm: a mid-session change does not move the files',
   await chrome.storage.local.set({ config });
   await sw.settled();
 });
+
+test('an input timestamped more than 5 s before the last seen time logs CLOCK_BACKWARDS first', async () => {
+  await sw.dispatch({ kind: 'NAV', tabId: 1, windowId: 3, url: 'https://e.x/start', at: 200000 });
+  await sw.dispatch({ kind: 'PERIODIC', at: 250000 });
+  await sw.dispatch({ kind: 'PERIODIC', at: 210000 });
+  let evs = await events();
+  assert.deepEqual(evs.slice(-2).map(e => e.name), ['CLOCK_BACKWARDS', 'PERIODIC']);
+  assert.deepEqual(evs.at(-2).data, { lastSeenAt: 250000, backMs: 40000 });
+  await sw.dispatch({ kind: 'PERIODIC', at: 208000 });
+  evs = await events();
+  assert.deepEqual(evs.slice(-2).map(e => e.name), ['PERIODIC', 'PERIODIC']);
+  await sw.dispatch({ kind: 'NAV', tabId: 1, windowId: 3, url: 'https://e.x/result', at: 209000 });
+  assert.equal((await get('session')).session.state, 'IDLE');
+});

@@ -30,6 +30,7 @@ const FLAGS = [
   ['SCREENSAVER', 'Screensaver / lock', 'warning'],
   ['EXTENSION_GAP', 'Recording gaps', 'serious'],
   ['CONFIG_CHANGED', 'Config changed', 'critical'],
+  ['CLOCK_BACKWARDS', 'Clock set back', 'critical'],
 ];
 const ICON = { good: '&#10003;', warning: '&#9650;', serious: '&#9679;', critical: '&#10007;' };
 

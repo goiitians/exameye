@@ -58,3 +58,9 @@ test('DRAG from the exam tab is logged with its data; from another tab it is dro
   r = reduce(r.session, cs('DRAG', { len: 12, tag: 'P' }, 42, 'https://g.x/'), cfg);
   assert.deepEqual(names(r), []);
 });
+
+test('CLOCK input emits CLOCK_BACKWARDS with the size of the jump', () => {
+  const r = reduce(arm().session, { kind: 'CLOCK', at: T0 + 1000, lastSeenAt: T0 + 61000 }, cfg);
+  assert.deepEqual(names(r), ['CLOCK_BACKWARDS']);
+  assert.deepEqual(r.events[0].data, { lastSeenAt: T0 + 61000, backMs: 60000 });
+});

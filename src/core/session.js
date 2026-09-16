@@ -171,6 +171,9 @@ const HANDLERS = {
   CONFIG_CHANGED(s, input, cfg, emit) {
     if (input.keys.length) emit('CONFIG_CHANGED', { keys: input.keys }, input);
   },
+  CLOCK(s, input, cfg, emit) {
+    emit('CLOCK_BACKWARDS', { lastSeenAt: input.lastSeenAt, backMs: input.lastSeenAt - input.at }, input);
+  },
 };
 
 function windowState(s, windowId, state, at, emit) {

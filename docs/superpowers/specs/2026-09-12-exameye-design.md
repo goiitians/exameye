@@ -286,6 +286,8 @@ unchanged: `phase` is an ordinary data key). Result/start/exam classification pr
   missed 30 s ticks — only possible if the extension could not run), a `GAP` input is reduced
   first with `reason: input.kind==='STARTUP' ? 'browser-restart' : 'sw-restart'`. Doing it inside
   `dispatch` (not at SW top level) avoids a race between module evaluation and `onStartup`.
+  Likewise, before reducing any input while not IDLE, the SW reduces `CLOCK{at,lastSeenAt}` when
+  `at < meta.lastSeenAt − 5000`.
 - **Chrome restart / crash**: `runtime.onStartup` → query all tabs; those whose URL classifies as
   start/exam/result form `examTabs`; dispatch `STARTUP{examTabs}` (the gap rule above emits
   `EXTENSION_GAP{reason:'browser-restart'}` in the same dispatch). Tab ids change across restarts,
@@ -355,6 +357,7 @@ Field `data` per event; every event also has `seq`, `ts` (ISO 8601 UTC), `t` (ep
 | IDLE_END | chrome.idle.onStateChanged | idleMs | no |
 | DOWNLOAD_STARTED | downloads.onCreated (not `byExtensionId===runtime.id`, and not a `data:` URL — see §14) | url, filename, mime | yes |
 | EXTENSION_GAP | SW boot / runtime.onStartup | lastSeenAt, gapMs, reason (`sw-restart`/`browser-restart`) | no |
+| CLOCK_BACKWARDS | SW: input time precedes meta.lastSeenAt by more than 5 s | lastSeenAt, backMs | no |
 | CONFIG_CHANGED | storage.onChanged on config while ARMED/CLOSING | keys | yes |
 | PERIODIC | alarm `periodic` | desktopShot? | yes |
 | DESKTOP_CAPTURE_STARTED | holder `started` (§6a); at arm when already sharing | width, height, pickMs, resumed? | yes |
@@ -844,6 +847,10 @@ recovery beyond re-injection on reload.
     `WINDOW_*` inputs are filtered by id and URL, but any transient `WINDOW_ID_NONE` Chrome emits
     while switching windows is subject to the same spurious-FOCUS_LEFT risk the exam window
     already has.
+16. **System clock.** All times are wall-clock; a clock set back is logged as `CLOCK_BACKWARDS`, a
+    clock set forward is indistinguishable from a recording gap and appears as `EXTENSION_GAP`.
+    Absolute alarms (`max`, `abandon`, `closing`, `desktopAsk`) fire early or late by the same
+    amount.
 
 - **`data:`-URL downloads are not logged.** The extension's own file writes are `data:` downloads, and
   under DevTools/CDP download overrides `byExtensionId` is undefined for them, which produced an
