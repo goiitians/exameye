@@ -148,7 +148,7 @@ async function dispatchNow(input) {
     const { meta: m2 = {} } = await store.get('meta');
     const d = m2.desktop || EMPTY_DESKTOP;
     await store.patchMeta({ desktop: { ...d, asks: 0 } });
-    if (d.state === 'on') await dispatchNow({ kind: 'DESKTOP', name: 'STARTED', data: { width: d.width, height: d.height, pickMs: null, resumed: true }, at: input.at });
+    if (d.state === 'on') await dispatchNow({ kind: 'DESKTOP', name: 'STARTED', data: { width: d.width, height: d.height, screens: d.screens ?? null, pickMs: null, resumed: true }, at: input.at });
     else await promptDesktopNow();
   }
 }

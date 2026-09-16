@@ -103,6 +103,15 @@ test('describeDesktopSummary', () => {
     }, endedAt),
     'on 09:15:04 - 09:40:02, stopped at 09:40:02, re-shared 09:41:30 - 12:15:44 (37 frames); declined 1x',
   );
+
+  assert.equal(
+    describeDesktopSummary({ frames: 3, declined: 0, screens: 2, spans: [{ from: onAt, to: null, stopped: false }] }, endedAt),
+    'on 09:15:04 - 12:15:44 (3 frames) (2+ screens; only the shared one is captured)',
+  );
+  assert.equal(
+    describeDesktopSummary({ frames: 3, declined: 0, screens: 1, spans: [{ from: onAt, to: null, stopped: false }] }, endedAt),
+    'on 09:15:04 - 12:15:44 (3 frames)',
+  );
 });
 
 test('summary.txt has the Desktop line after Log chain and a Desktop frames line when frames > 0', () => {

@@ -40,6 +40,7 @@ function arm(s, input, cfg, emit, out, { trigger, label }) {
     lastActivityAt: input.at, tabLostAt: null, windowState: 'normal', away: freshAway(),
     maxAt, endClickAt: null, markerSeen: false,
     outcome: null, trigger: null, triggerLabel: null, examEndedAt: null, closingUntil: null,
+    multiMonitorSeen: false,
   });
   emit('SESSION_ARMED', label !== undefined ? { url: input.url, trigger, label } : { url: input.url, trigger }, input);
   out.effects.push({ type: 'ABANDON_ALARM_CLEAR' });
@@ -262,6 +263,10 @@ Object.assign(HANDLERS, {
   DESKTOP(s, input, cfg, emit) {
     const name = DESKTOP_EVENT[input.name];
     if (name) emit(name, input.data || {});
+    if (input.name === 'STARTED' && input.data?.screens > 1 && !s.multiMonitorSeen) {
+      s.multiMonitorSeen = true;
+      emit('MULTI_MONITOR', { screens: input.data.screens });
+    }
   },
   TICK(s, input, cfg, emit, out) {
     const w = input.windows.find(w => w.id === s.examWindowId);

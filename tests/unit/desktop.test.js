@@ -31,7 +31,7 @@ test('started → on with MINIMIZE and alarm clear', () => {
   assert.equal(r.desktop.nextAskAt, null);
   assert.equal(r.desktop.width, 1920);
   assert.equal(r.desktop.height, 1080);
-  assert.deepEqual(r.input, { kind: 'DESKTOP', name: 'STARTED', data: { width: 1920, height: 1080, pickMs: 400 }, at: T0 + 1000 });
+  assert.deepEqual(r.input, { kind: 'DESKTOP', name: 'STARTED', data: { width: 1920, height: 1080, pickMs: 400, screens: null }, at: T0 + 1000 });
   assert.deepEqual(r.effects, [{ type: 'MINIMIZE' }, { type: 'ASK_ALARM_CLEAR' }]);
 });
 
@@ -124,4 +124,12 @@ test('onHolder does not mutate its input', () => {
   const before = structuredClone(on);
   onHolder(on, { name: 'ended' }, { at: T0 + 1000, repromptMin: 5 });
   assert.deepEqual(on, before);
+});
+
+test('started copies screens into the desktop state and the input; EMPTY_DESKTOP.screens is null', () => {
+  const r = onHolder(EMPTY_DESKTOP, { name: 'started', width: 1, height: 1, pickMs: 5, screens: 2 }, { at: T0, repromptMin: 5 });
+  assert.equal(r.desktop.screens, 2);
+  assert.equal(r.input.data.screens, 2);
+  assert.equal(EMPTY_DESKTOP.screens, null);
+  assert.equal(onHolder(EMPTY_DESKTOP, { name: 'started', width: 1, height: 1, pickMs: 5 }, { at: T0, repromptMin: 5 }).desktop.screens, null);
 });

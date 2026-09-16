@@ -16,6 +16,7 @@ export const FLAGS = [
   ['EXTENSION_GAP', 'Recording gaps', 'serious'],
   ['CONFIG_CHANGED', 'Config changed', 'critical'],
   ['CLOCK_BACKWARDS', 'Clock set back', 'critical'],
+  ['MULTI_MONITOR', 'Multiple screens', 'warning'],
 ];
 
 export const flagCount = (counts) => FLAGS.reduce((n, [name]) => n + (counts[name] || 0), 0);

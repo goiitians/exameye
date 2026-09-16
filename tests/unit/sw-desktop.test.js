@@ -94,7 +94,7 @@ test('started: on, minimised, DESKTOP_CAPTURE_STARTED with a tab shot, desktopAs
   const events = (await get('events')).events;
   const ev = events.at(-1);
   assert.equal(ev.name, 'DESKTOP_CAPTURE_STARTED');
-  assert.deepEqual(ev.data, { width: 1920, height: 1080, pickMs: 2400 });
+  assert.deepEqual(ev.data, { width: 1920, height: 1080, pickMs: 2400, screens: null });
   assert.match(ev.shot, /_DESKTOP_CAPTURE_STARTED\.jpg$/);
   assert.equal(chrome.alarms.alarms.desktopAsk, undefined);
 });

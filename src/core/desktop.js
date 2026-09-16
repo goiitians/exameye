@@ -2,7 +2,7 @@ import { fmtLocal } from './ids.js';
 
 export const EMPTY_DESKTOP = Object.freeze({
   state: 'off', at: 0, since: null, holderWindowId: null, holderTabId: null, asks: 0,
-  width: null, height: null, error: null, nextAskAt: null,
+  width: null, height: null, error: null, nextAskAt: null, screens: null,
 });
 
 export function shouldPrompt(desktop, { at, repromptMin }) {
@@ -25,9 +25,10 @@ function decline(d, name, at, repromptMin, extra = {}) {
 export function onHolder(desktop, msg, { at, repromptMin }) {
   const d = desktop || EMPTY_DESKTOP;
   if (msg.name === 'started') {
+    const screens = msg.screens ?? null;
     return {
-      desktop: { ...d, state: 'on', at, since: at, error: null, nextAskAt: null, width: msg.width, height: msg.height },
-      input: { kind: 'DESKTOP', name: 'STARTED', data: { width: msg.width, height: msg.height, pickMs: msg.pickMs }, at },
+      desktop: { ...d, state: 'on', at, since: at, error: null, nextAskAt: null, width: msg.width, height: msg.height, screens },
+      input: { kind: 'DESKTOP', name: 'STARTED', data: { width: msg.width, height: msg.height, pickMs: msg.pickMs, screens }, at },
       effects: [{ type: 'MINIMIZE' }, { type: 'ASK_ALARM_CLEAR' }],
     };
   }

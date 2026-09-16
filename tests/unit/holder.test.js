@@ -181,3 +181,19 @@ test('ask message stops the current stream and re-asks', async () => {
   assert.equal(h.chooseCalls.length, 2);
   assert.equal(track.stop.calls, 1);
 });
+
+test('started reports screens 2 when screen.isExtended is true, 1 when false, null when unknown', async () => {
+  for (const [scr, want] of [[{ isExtended: true }, 2], [{ isExtended: false }, 1], [{}, null]]) {
+    globalThis.screen = scr;
+    const h = await loadHolder({ readyResponse: { ask: true } });
+    h.chooseCalls[0].cb('stream-id');
+    const { stream } = makeStream();
+    h.gum.resolve(stream);
+    await flush();
+    h.dom.v.onloadedmetadata();
+    await flush();
+    const started = h.sent.find((m) => m.name === 'started');
+    assert.equal(started.screens, want, JSON.stringify(scr));
+  }
+  delete globalThis.screen;
+});

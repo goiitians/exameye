@@ -12,6 +12,7 @@ export function tally(events) {
   const desktopFiles = new Set();
   const spans = [];
   let desktopAsks = 0, desktopDeclined = 0, desktopFailed = 0;
+  let screens = 1;
   let openSpan = null;
   let tailEvents = 0;
   let open = null;
@@ -29,6 +30,7 @@ export function tally(events) {
     if (ev.name === 'DESKTOP_FRAME' && ev.shot) desktopFiles.add(ev.shot);
     if (ev.name === 'DESKTOP_CAPTURE_STARTED') {
       if (!ev.data.resumed) desktopAsks += 1;
+      if (ev.data.screens > screens) screens = ev.data.screens;
       openSpan = { from: ev.t, to: null, stopped: false };
       spans.push(openSpan);
     } else if (ev.name === 'DESKTOP_CAPTURE_STOPPED') {
@@ -80,6 +82,6 @@ export function tally(events) {
   return {
     counts, durations, parallel: [...parallel.values()].sort((a, b) => b.focusedMs - a.focusedMs), attribution,
     tail: { events: tailEvents, shots: tailShots.size },
-    desktop: { frames: desktopFiles.size, asks: desktopAsks, declined: desktopDeclined, failed: desktopFailed, spans },
+    desktop: { frames: desktopFiles.size, asks: desktopAsks, declined: desktopDeclined, failed: desktopFailed, screens, spans },
   };
 }

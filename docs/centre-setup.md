@@ -75,6 +75,7 @@ On a throw-away candidate account walk every in-paper screen and confirm the con
 - ExamEye records "focus left Chrome"; when Desktop capture is `off` it takes no desktop screenshots. It never names other applications, even when Desktop capture is `on`.
 - The Options page is reachable by anyone at the machine. Every saved change during a paper is logged as `CONFIG_CHANGED` with the field names and a screenshot, and the session's output folder is fixed when the paper starts, so a changed subfolder cannot split or hide a session in progress. On managed machines lock the page with the `ExtensionSettings` policy.
 - If ExamEye is disabled and enabled again, it re-creates its timers on its next start; the gap shows as `EXTENSION_GAP` on the next event.
+- A second monitor is flagged (`MULTI_MONITOR`); only the shared screen is captured. Disconnect extra displays before the paper where possible.
 
 ## 8. Candidate notice
 Display or read out before the paper: "Your screen is recorded during this paper. Chrome will ask you to share your screen when the exam page opens: click the screen preview, then Share. Do not close the small ExamEye window or press Stop sharing." Cancel and Stop sharing are logged and re-asked.

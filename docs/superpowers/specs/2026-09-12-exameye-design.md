@@ -366,6 +366,7 @@ Field `data` per event; every event also has `seq`, `ts` (ISO 8601 UTC), `t` (ep
 | DESKTOP_CAPTURE_STOPPED | holder `ended`; holder window closed while on; tick `grab` not alive | reason (`stop-sharing`/`window-closed`/`error`), error? | yes |
 | DESKTOP_CAPTURE_FAILED | holder `failed` (`getUserMedia` rejected) | error | yes |
 | DESKTOP_FRAME | holder `frame` while focus is away, when kept (§6a) | n | desktop frame only: `shot` is the desktop file, no tab capture |
+| MULTI_MONITOR | first DESKTOP STARTED with screens > 1 (once per session) | screens | no |
 
 ### 5a. Screensaver / lock attribution (added 2026-09-12)
 
@@ -471,7 +472,7 @@ does not survive a browser restart.
 **Messages.** Holder → SW `{type:'desktop', name, …}`: `ready` (page loaded; the SW answers
 `{ask, close}` — `ask` when this window is the current holder and a dialog is wanted, `close`
 when the SW does not know the window, e.g. one Chrome restored by itself), `started{width,height,
-pickMs}`, `cancelled{pickMs}`, `failed{error,pickMs}`, `ended` (video track `ended`: Stop sharing
+pickMs,screens}`, `cancelled{pickMs}`, `failed{error,pickMs}`, `ended` (video track `ended`: Stop sharing
 pressed), `frame{b64}` (away loop). SW → holder `{type:'holder', name, …}`: `ask` (stop any
 current stream, open the dialog again), `grab` → `{b64, alive}`, `away{on}`
 (start/stop posting `frame` every 10 s). All holder → SW messages are handled in one queue step.
@@ -480,7 +481,7 @@ broadcast; holder → SW messages other than `ready` are accepted only when `sen
 meta.desktop.holderTabId`, and `ready` from any other tab is answered `{close:true}`.
 
 **State** (`meta.desktop`; pure transitions in `core/desktop.js`):
-`{ state, at, since, holderWindowId, holderTabId, asks, width, height, error, nextAskAt }`
+`{ state, at, since, holderWindowId, holderTabId, asks, width, height, error, nextAskAt, screens }`
 (`holderTabId`: tab id of the holder page; `null` when no holder exists), `state` ∈ `off`
 (initial; config off; after session end) · `prompting` (dialog open) · `on` · `declined` (Cancel,
 or holder window closed while prompting) · `stopped` (Stop sharing, holder window closed while
@@ -667,14 +668,16 @@ when `session.maxAt` is set. `Ended:` is the tail end; the `Phases` block lists 
 with `data.phase === 'tail'`). Sessions without a tail omit the tail line.
 
 `Desktop:` is rendered by `describeDesktopSummary(tally.desktop, endedAt)` (`core/summary-text.js`,
-shared with the HTML renderer) from `tally.desktop = { frames, asks, declined, failed, spans:
-[{ from, to, stopped }] }` (`frames` = distinct desktop files over `data.desktopShot` and
-`DESKTOP_FRAME.shot`; a span opens at `DESKTOP_CAPTURE_STARTED` and closes at the next
+shared with the HTML renderer) from `tally.desktop = { frames, asks, declined, failed, screens,
+spans: [{ from, to, stopped }] }` (`frames` = distinct desktop files over `data.desktopShot` and
+`DESKTOP_FRAME.shot`; `screens` = the largest `screens` reported by a `DESKTOP_CAPTURE_STARTED`,
+default 1; a span opens at `DESKTOP_CAPTURE_STARTED` and closes at the next
 `DESKTOP_CAPTURE_STOPPED` (`stopped:true`) or at `endedAt` (`to:null`)): `off` when there is no
 desktop event and no frame · `declined (N asks)` when nothing was ever shared · `failed: <error>`
 · otherwise `on HH:MM:SS - HH:MM:SS` per span, joined as `on A - B, stopped at B, re-shared C - D`,
-then ` (N frames)`, then `; declined Nx` when declines happened between spans. The
-`Desktop frames:` line is omitted when `frames` is 0.
+then ` (N frames)`, then ` (2+ screens; only the shared one is captured)` when `screens > 1`, then
+`; declined Nx` when declines happened between spans. The `Desktop frames:` line is omitted when
+`frames` is 0.
 
 ### summary.html
 
@@ -867,6 +870,9 @@ recovery beyond re-injection on reload.
     clock set forward is indistinguishable from a recording gap and appears as `EXTENSION_GAP`.
     Absolute alarms (`max`, `abandon`, `closing`, `desktopAsk`) fire early or late by the same
     amount.
+17. **Multiple screens.** The share dialog captures the one screen the candidate picks;
+    `screen.isExtended` only says whether more than one exists, so the summary reads
+    `2+ screens`.
 
 - **`data:`-URL downloads are not logged.** The extension's own file writes are `data:` downloads, and
   under DevTools/CDP download overrides `byExtensionId` is undefined for them, which produced an

@@ -40,7 +40,7 @@ test('empty input', () => {
     parallel: [],
     attribution: { screensaver: 0, idle: 0, user: 0 },
     tail: { events: 0, shots: 0 },
-    desktop: { frames: 0, asks: 0, declined: 0, failed: 0, spans: [] },
+    desktop: { frames: 0, asks: 0, declined: 0, failed: 0, screens: 1, spans: [] },
   });
 });
 
@@ -85,7 +85,7 @@ test('asks, declined, failed', () => {
 
 test('no desktop events → frames 0, empty spans', () => {
   const t = tally([ev(1, 0, 'SESSION_ARMED', { url: 's' }, 1)]);
-  assert.deepEqual(t.desktop, { frames: 0, asks: 0, declined: 0, failed: 0, spans: [] });
+  assert.deepEqual(t.desktop, { frames: 0, asks: 0, declined: 0, failed: 0, screens: 1, spans: [] });
 });
 
 test('screensaver attribution: locked state during focus-left window classifies as screensaver', () => {
@@ -159,4 +159,15 @@ test('user attribution: no idle event in the window counts as user and adds to f
   assert.deepEqual(t.attribution, { screensaver: 0, idle: 0, user: 1 });
   assert.equal(t.durations.focusLeftMs, 2000);
   assert.equal(t.durations.screensaverMs, 0);
+});
+
+test('desktop.screens is the largest screens value reported by a STARTED event, default 1', () => {
+  assert.equal(tally([ev(1, 0, 'SESSION_ARMED', { url: 's' }, 1)]).desktop.screens, 1);
+  const events = [
+    ev(1, 0, 'SESSION_ARMED', { url: 's' }, 1),
+    ev(2, 1000, 'DESKTOP_CAPTURE_STARTED', { width: 1, height: 1, pickMs: 1, screens: 2 }),
+    ev(3, 2000, 'DESKTOP_CAPTURE_STOPPED', { reason: 'stop-sharing' }),
+    ev(4, 3000, 'DESKTOP_CAPTURE_STARTED', { width: 1, height: 1, pickMs: 1, screens: 1 }),
+  ];
+  assert.equal(tally(events).desktop.screens, 2);
 });

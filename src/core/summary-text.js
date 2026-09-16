@@ -16,7 +16,7 @@ export function describeOutcome(session) {
 }
 
 export function describeDesktopSummary(desktop, endedAt, lastError) {
-  const { frames = 0, asks = 0, declined = 0, failed = 0, spans = [] } = desktop;
+  const { frames = 0, asks = 0, declined = 0, failed = 0, screens = 1, spans = [] } = desktop;
   if (spans.length === 0) {
     if (failed > 0) return `failed: ${lastError}`;
     if (declined > 0) return `declined (${asks} asks)`;
@@ -30,6 +30,7 @@ export function describeDesktopSummary(desktop, endedAt, lastError) {
     if (sp.stopped) line += `, stopped at ${to}`;
   });
   line += ` (${frames} frames)`;
+  if (screens > 1) line += ` (${screens}+ screens; only the shared one is captured)`;
   if (declined > 0) line += `; declined ${declined}x`;
   return line;
 }

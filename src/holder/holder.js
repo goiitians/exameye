@@ -48,7 +48,8 @@ function ask() {
       const [track] = s.getVideoTracks();
       track.addEventListener('ended', () => { stream = null; setAway(false); send({ name: 'ended' }); });
       msg.textContent = 'Recording the screen for this paper. Do not close this window.';
-      send({ name: 'started', width: v.videoWidth, height: v.videoHeight, pickMs });
+      const screens = typeof globalThis.screen?.isExtended === 'boolean' ? (globalThis.screen.isExtended ? 2 : 1) : null;
+      send({ name: 'started', width: v.videoWidth, height: v.videoHeight, pickMs, screens });
     }).catch((e) => {
       send({ name: 'failed', error: String(e?.message || e), pickMs });
     });

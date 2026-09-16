@@ -64,3 +64,14 @@ test('CLOCK input emits CLOCK_BACKWARDS with the size of the jump', () => {
   assert.deepEqual(names(r), ['CLOCK_BACKWARDS']);
   assert.deepEqual(r.events[0].data, { lastSeenAt: T0 + 61000, backMs: 60000 });
 });
+
+test('MULTI_MONITOR is emitted once per session on the first STARTED with screens > 1', () => {
+  const started = (screens, at) => ({ kind: 'DESKTOP', name: 'STARTED', data: { width: 1, height: 1, pickMs: 1, screens }, at });
+  let r = reduce(arm().session, started(2, T0 + 1000), cfg);
+  assert.deepEqual(names(r), ['DESKTOP_CAPTURE_STARTED', 'MULTI_MONITOR']);
+  assert.deepEqual(r.events[1].data, { screens: 2 });
+  r = reduce(r.session, started(2, T0 + 2000), cfg);
+  assert.deepEqual(names(r), ['DESKTOP_CAPTURE_STARTED']);
+  assert.deepEqual(names(reduce(arm().session, started(1, T0 + 1000), cfg)), ['DESKTOP_CAPTURE_STARTED']);
+  assert.deepEqual(names(reduce(arm().session, started(null, T0 + 1000), cfg)), ['DESKTOP_CAPTURE_STARTED']);
+});
