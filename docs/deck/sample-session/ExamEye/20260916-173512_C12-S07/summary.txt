@@ -1,0 +1,34 @@
+ExamEye summary
+Session:   20260916-173512_C12-S07   Seat: C12-S07
+Started:   2026-09-16 17:35:12 (+05:30)   Ended: 2026-09-16 17:36:25   Outcome: RESULT
+Trigger:   result URL http://127.0.0.1:64950/exam/result.html reached at 17:36:25   (auto-submit expected at 20:55:12)
+Duration:  00:01:13
+Log chain: OK (12 lines)
+Desktop:   off
+
+Phases
+  Exam ............. 17:35:12 - 17:36:25  4 screenshots
+
+Counts
+  CONTEXTMENU ............ 1
+  COPY ................... 1
+  IDLE_END ............... 1
+  IDLE_START ............. 1
+  PARALLEL_PAGE .......... 2
+  RESULT_PAGE ............ 1
+  SESSION_ARMED .......... 1
+  SESSION_DISARMED ....... 1
+  TAB_RETURN ............. 1
+  TAB_SWITCH ............. 1
+
+Time away
+  Tab away ......... 00:00:02
+  Focus left ....... 00:00:00   (user; screensaver: 0, idle: 0 not counted)
+  Minimized ........ 00:00:00
+  Screensaver/lock . 00:00:00
+  Idle ............. 00:00:11
+
+Parallel pages (focused time, visits)
+  00:00:02  2  http://127.0.0.1:64950/other.html  "Other page"
+
+Screenshots: 4 (screenshots/)

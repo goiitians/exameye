@@ -1,0 +1,13 @@
+[
+{"data":{"trigger":"nav","url":"http://127.0.0.1:64950/exam/start.html?candidate=1"},"hash":"964fcfcd","name":"SESSION_ARMED","seq":1,"shot":"screenshots/20260916-173512_SESSION_ARMED.jpg","t":1789560312630,"tabId":208374777,"ts":"2026-09-16T12:05:12.630Z","windowId":208374776},
+{"data":{"tag":"H1"},"hash":"63b1e8dc","name":"CONTEXTMENU","seq":2,"shot":"screenshots/20260916-173512_SESSION_ARMED.jpg","t":1789560312930,"tabId":208374777,"ts":"2026-09-16T12:05:12.930Z","windowId":208374776},
+{"data":{"incognito":false,"trigger":"committed","url":"http://127.0.0.1:64950/other.html"},"hash":"1c401e13","name":"PARALLEL_PAGE","seq":3,"shot":null,"t":1789560315188,"tabId":208374785,"ts":"2026-09-16T12:05:15.188Z","windowId":208374776},
+{"data":{"incognito":false,"toTabId":208374785,"toTitle":"Other page","toUrl":"http://127.0.0.1:64950/other.html","toWindowId":208374776},"hash":"02273741","name":"TAB_SWITCH","seq":4,"shot":"screenshots/20260916-173515_TAB_SWITCH.jpg","t":1789560315199,"tabId":208374785,"ts":"2026-09-16T12:05:15.199Z","windowId":208374776},
+{"data":{"incognito":false,"title":"Other page","trigger":"activated","url":"http://127.0.0.1:64950/other.html"},"hash":"f0d95964","name":"PARALLEL_PAGE","seq":5,"shot":"screenshots/20260916-173515_TAB_SWITCH.jpg","t":1789560315199,"tabId":208374785,"ts":"2026-09-16T12:05:15.199Z","windowId":208374776},
+{"data":{"awayMs":2720},"hash":"ea7b884d","name":"TAB_RETURN","seq":6,"shot":null,"t":1789560317919,"tabId":208374777,"ts":"2026-09-16T12:05:17.919Z","windowId":208374776},
+{"data":{"len":0},"hash":"35ccd7d2","name":"COPY","seq":7,"shot":"screenshots/20260916-173517_COPY.jpg","t":1789560317925,"tabId":208374777,"ts":"2026-09-16T12:05:17.925Z","windowId":208374776},
+{"data":{"state":"idle"},"hash":"7a34b7e3","name":"IDLE_START","seq":8,"shot":null,"t":1789560369431,"ts":"2026-09-16T12:06:09.431Z"},
+{"data":{"idleMs":11009},"hash":"f11de92a","name":"IDLE_END","seq":9,"shot":null,"t":1789560380440,"ts":"2026-09-16T12:06:20.440Z"},
+{"seq":10,"ts":"2026-09-16T12:06:25.708Z","t":1789560385708,"name":"RESULT_PAGE","data":{"url":"http://127.0.0.1:64950/exam/result.html"},"shot":"screenshots/20260916-173625_RESULT_PAGE.jpg","tabId":208374777,"windowId":208374776,"hash":"09957422"},
+{"seq":11,"ts":"2026-09-16T12:06:25.708Z","t":1789560385708,"name":"SESSION_DISARMED","data":{"outcome":"RESULT","trigger":"result","url":"http://127.0.0.1:64950/exam/result.html"},"shot":"screenshots/20260916-173625_RESULT_PAGE.jpg","tabId":208374777,"windowId":208374776,"hash":"40549ad9"}
+]

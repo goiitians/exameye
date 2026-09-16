@@ -169,7 +169,7 @@
   <tr><td><code>summary.html</code></td><td>The report: outcome, flags, time away, parallel pages, the full timeline, every screenshot.</td></tr>
   <tr><td><code>summary.txt</code></td><td>The same report as plain text.</td></tr>
   <tr><td><code>log.txt</code></td><td>One line per event, each carrying a fingerprint of the line before it.</td></tr>
-  <tr><td><code>events.jsonl</code></td><td>The same events in a form other software can read.</td></tr>
+  <tr><td><code>events.json</code></td><td>The same events in a form other software can read.</td></tr>
   <tr><td><code>screenshots/</code></td><td>Exam-tab pictures, named by time and event.</td></tr>
   <tr><td><code>screenshots/desktop/</code></td><td>Whole-screen pictures, when capture is on.</td></tr>
 </table>
@@ -213,7 +213,7 @@
 <p>IT can re-check any folder later, independently of the report, with one command run from the ExamEye folder (it needs Node.js on that machine):</p>
 <pre>node tools/verify.mjs "&lt;folder&gt;"
 
-OK 20260916-132318_C12-S07: 10 lines, 9 events, 3 screenshots present</pre>
+OK 20260916-173512_C12-S07: 12 lines, 11 events, 4 screenshots present</pre>
 <p>A modified copy reports <code>BROKEN</code> and names the first bad line or the missing picture.</p>
 
 <h2>9. Limits and privacy</h2>

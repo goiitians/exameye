@@ -1,11 +1,12 @@
 {
-  "id": "20260916-132318_C12-S07",
+  "id": "20260916-173512_C12-S07",
   "files": [
-    "events.jsonl",
+    "events.json",
     "log.txt",
-    "screenshots/20260916-132318_SESSION_ARMED.jpg",
-    "screenshots/20260916-132320_TAB_SWITCH.jpg",
-    "screenshots/20260916-132323_COPY.jpg",
+    "screenshots/20260916-173512_SESSION_ARMED.jpg",
+    "screenshots/20260916-173515_TAB_SWITCH.jpg",
+    "screenshots/20260916-173517_COPY.jpg",
+    "screenshots/20260916-173625_RESULT_PAGE.jpg",
     "summary.html",
     "summary.txt"
   ]

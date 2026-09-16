@@ -1,0 +1,12 @@
+# ExamEye session 20260916-173512_C12-S07 seat="C12-S07" started=2026-09-16T12:05:12.630Z tz=+05:30 #00000000
+2026-09-16T12:05:12.630Z SESSION_ARMED tab=208374777 win=208374776 url="http://127.0.0.1:64950/exam/start.html?candidate=1" trigger="nav" shot="screenshots/20260916-173512_SESSION_ARMED.jpg" #a4c971f8
+2026-09-16T12:05:12.930Z CONTEXTMENU tab=208374777 win=208374776 tag="H1" shot="screenshots/20260916-173512_SESSION_ARMED.jpg" #964fcfcd
+2026-09-16T12:05:15.188Z PARALLEL_PAGE tab=208374785 win=208374776 url="http://127.0.0.1:64950/other.html" trigger="committed" incognito=false #63b1e8dc
+2026-09-16T12:05:15.199Z TAB_SWITCH tab=208374785 win=208374776 toTabId=208374785 toUrl="http://127.0.0.1:64950/other.html" toTitle="Other page" toWindowId=208374776 incognito=false shot="screenshots/20260916-173515_TAB_SWITCH.jpg" #1c401e13
+2026-09-16T12:05:15.199Z PARALLEL_PAGE tab=208374785 win=208374776 url="http://127.0.0.1:64950/other.html" title="Other page" incognito=false trigger="activated" shot="screenshots/20260916-173515_TAB_SWITCH.jpg" #02273741
+2026-09-16T12:05:17.919Z TAB_RETURN tab=208374777 win=208374776 awayMs=2720 #f0d95964
+2026-09-16T12:05:17.925Z COPY tab=208374777 win=208374776 len=0 shot="screenshots/20260916-173517_COPY.jpg" #ea7b884d
+2026-09-16T12:06:09.431Z IDLE_START state="idle" #35ccd7d2
+2026-09-16T12:06:20.440Z IDLE_END idleMs=11009 #7a34b7e3
+2026-09-16T12:06:25.708Z RESULT_PAGE tab=208374777 win=208374776 url="http://127.0.0.1:64950/exam/result.html" shot="screenshots/20260916-173625_RESULT_PAGE.jpg" #f11de92a
+2026-09-16T12:06:25.708Z SESSION_DISARMED tab=208374777 win=208374776 outcome="RESULT" trigger="result" url="http://127.0.0.1:64950/exam/result.html" shot="screenshots/20260916-173625_RESULT_PAGE.jpg" #09957422
