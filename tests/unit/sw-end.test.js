@@ -17,8 +17,8 @@ test('result navigation writes all files, then clears the session', async () => 
   const { session: armed } = await get('session');
   await sw.dispatch({ kind: 'NAV', tabId: 1, windowId: 3, url: 'https://e.x/result', at: 61000 });
   const base = `ExamEye/${armed.id}/`;
-  for (const f of ['log.txt', 'events.jsonl', 'summary.txt', 'summary.html']) assert.ok(byName(f).some(c => c.filename === base + f), f);
-  const jsonl = decode(byName('events.jsonl').at(-1).url).trimEnd().split('\n').map(l => JSON.parse(l));
+  for (const f of ['log.txt', 'events.json', 'summary.txt', 'summary.html']) assert.ok(byName(f).some(c => c.filename === base + f), f);
+  const jsonl = JSON.parse(decode(byName('events.json').at(-1).url));
   assert.deepEqual(jsonl.map(e => e.name), ['SESSION_ARMED', 'RESULT_PAGE', 'SESSION_DISARMED']);
   assert.equal(typeof jsonl[2].hash, 'string');
   assert.match(decode(byName('summary.txt').at(-1).url), /Outcome: RESULT[\s\S]*Log chain: OK \(4 lines\)/);
@@ -56,24 +56,24 @@ test('a tick that fires while endSession is mid-flush does not re-run it over th
   const logCalls = newCalls.filter(c => c.filename === `${base}log.txt`);
   assert.equal(logCalls.length, 1, 'log.txt must be written exactly once for this disarm, not re-rendered by the racing tick');
   assert.match(decode(logCalls[0].url), /SESSION_ARMED/);
-  const eventsCalls = newCalls.filter(c => c.filename === `${base}events.jsonl`);
-  assert.equal(eventsCalls.length, 1, 'events.jsonl must be written exactly once');
-  assert.notEqual(decode(eventsCalls[0].url).trim(), '', 'events.jsonl must not be re-rendered empty');
+  const eventsCalls = newCalls.filter(c => c.filename === `${base}events.json`);
+  assert.equal(eventsCalls.length, 1, 'events.json must be written exactly once');
+  assert.notEqual(decode(eventsCalls[0].url).trim(), '', 'events.json must not be re-rendered empty');
   assert.equal((await get('meta')).meta.pendingEnd, null);
 });
 
-test('recover() renders log.txt/events.jsonl from the pendingEnd snapshot, not from already-cleared live storage', async () => {
+test('recover() renders log.txt/events.json from the pendingEnd snapshot, not from already-cleared live storage', async () => {
   await sw.dispatch({ kind: 'NAV', tabId: 14, windowId: 3, url: 'https://e.x/start', at: 800000 });
   const { session: armed } = await get('session');
   await sw.dispatch({ kind: 'NAV', tabId: 14, windowId: 3, url: 'https://e.x/result', at: 800500 });
   // this session has already ended normally; borrow its real (correct) rendered content as the
   // "snapshot" for a synthetic replay below, so the expected output is derived the same way
   // endSession itself derives it, not hand-typed.
-  const jsonlEvents = decode(byName('events.jsonl').at(-1).url).trimEnd().split('\n').map(l => JSON.parse(l));
+  const jsonlEvents = JSON.parse(decode(byName('events.json').at(-1).url));
   const logLines = decode(byName('log.txt').at(-1).url).trimEnd().split('\n');
   const base = `ExamEye/${armed.id}/`;
   const expectedLog = logLines.join('\n') + '\n';
-  const expectedEvents = jsonlEvents.map(ev => JSON.stringify(ev)).join('\n') + '\n';
+  const expectedEvents = '[\n' + jsonlEvents.map(e => JSON.stringify(e)).join(',\n') + '\n]\n';
   // simulate the state a crash right after a successful flush but before the final clear used to
   // leave under the pre-fix code: session IDLE, events/lines/shots already reset live, pending
   // holding something stale at the same paths, pendingEnd still set.
@@ -87,8 +87,8 @@ test('recover() renders log.txt/events.jsonl from the pendingEnd snapshot, not f
   await sw.settled();
   const finalLog = chrome.downloads.calls.filter(c => c.filename === `${base}log.txt`).at(-1);
   assert.equal(decode(finalLog.url), expectedLog, 'log.txt must be replayed from the snapshot, not left stale or emptied');
-  const finalEvents = chrome.downloads.calls.filter(c => c.filename === `${base}events.jsonl`).at(-1);
-  assert.equal(decode(finalEvents.url), expectedEvents, 'events.jsonl must be replayed from the snapshot, not emptied');
+  const finalEvents = chrome.downloads.calls.filter(c => c.filename === `${base}events.json`).at(-1);
+  assert.equal(decode(finalEvents.url), expectedEvents, 'events.json must be replayed from the snapshot, not emptied');
   assert.equal((await get('meta')).meta.pendingEnd, null);
 });
 
@@ -104,7 +104,7 @@ test('recover() finishes an interrupted session end left as meta.pendingEnd', as
   await sw.recover();
   await sw.settled();
   const base = `ExamEye/${armed.id}/`;
-  for (const f of ['log.txt', 'events.jsonl', 'summary.txt', 'summary.html']) assert.ok(byName(f).some(c => c.filename === base + f), f);
+  for (const f of ['log.txt', 'events.json', 'summary.txt', 'summary.html']) assert.ok(byName(f).some(c => c.filename === base + f), f);
   assert.match(decode(byName('summary.txt').at(-1).url), /Outcome: RESULT/);
   const after = await get(['meta', 'session']);
   assert.equal(after.meta.pendingEnd, null);
@@ -117,7 +117,7 @@ test('ABANDON_TIMER produces summary files with outcome ABANDONED and clears pen
   await sw.dispatch({ kind: 'TAB_REMOVED', tabId: 10, at: 300100 });
   await sw.dispatch({ kind: 'ABANDON_TIMER', at: 300100 + 600000 });
   const base = `ExamEye/${armed.id}/`;
-  for (const f of ['log.txt', 'events.jsonl', 'summary.txt', 'summary.html']) assert.ok(byName(f).some(c => c.filename === base + f), f);
+  for (const f of ['log.txt', 'events.json', 'summary.txt', 'summary.html']) assert.ok(byName(f).some(c => c.filename === base + f), f);
   assert.match(decode(byName('summary.txt').at(-1).url), /Outcome: ABANDONED/);
   const { meta, session } = await get(['meta', 'session']);
   assert.equal(meta.pendingEnd, null);
@@ -161,7 +161,7 @@ test('replaying an old pendingEnd does not wipe a new session armed in the meant
   await sw.tick();
   await sw.settled();
   const oldBase = `ExamEye/${oldArmed.id}/`;
-  for (const f of ['log.txt', 'events.jsonl', 'summary.txt', 'summary.html']) assert.ok(byName(f).some(c => c.filename === oldBase + f), `old session's ${f}`);
+  for (const f of ['log.txt', 'events.json', 'summary.txt', 'summary.html']) assert.ok(byName(f).some(c => c.filename === oldBase + f), `old session's ${f}`);
   assert.equal((await get('meta')).meta.pendingEnd, null);
   const { session: afterSession, lines: afterLines } = await get(['session', 'lines']);
   assert.equal(afterSession.id, newArmed.id, 'the new session must still be the live session');
@@ -206,7 +206,7 @@ test('closing alarm ends the session and the summary separates exam and tail pha
   assert.match(summary, /Outcome: SUBMITTED/);
   assert.match(summary, /Trigger:   end button "finish" clicked/);
   assert.match(summary, /Post-submit tail .* 2 screenshots/);
-  const jsonl = decode(byName('events.jsonl').at(-1).url).trimEnd().split('\n').map(l => JSON.parse(l));
+  const jsonl = JSON.parse(decode(byName('events.json').at(-1).url));
   const last = jsonl.at(-1);
   assert.equal(last.name, 'SESSION_DISARMED');
   assert.equal(last.data.phase, 'tail');

@@ -367,7 +367,9 @@ async function endSession(e, cfg) {
   const ctx = { session, outcome, endedAt: now(), events, tally: tally(events), integrity: { ...(await verify(lines)), lines: lines.length } };
   const { pending: p0 = {} } = await store.get('pending');
   let pending = putText(p0, `${base}/log.txt`, 'text/plain', lines.join('\n') + '\n');
-  pending = putText(pending, `${base}/events.jsonl`, 'application/json', events.map(ev => JSON.stringify(ev)).join('\n') + '\n');
+  // events.json, one event per line inside a JSON array: Chrome renames a download to an extension on the MIME type's
+  // list (its own table plus OS-registered ones), and .json is the only name application/json keeps on every machine
+  pending = putText(pending, `${base}/events.json`, 'application/json', '[\n' + events.map(ev => JSON.stringify(ev)).join(',\n') + '\n]\n');
   pending = putText(pending, `${base}/summary.txt`, 'text/plain', renderSummaryText(ctx));
   await store.set({ pending });
   await flushNow();
@@ -471,9 +473,26 @@ async function ensureBoot() {
   });
 }
 
+// A centre ships its settings as defaults.json next to manifest.json (see tools/build-installer.mjs);
+// they are used once, on first install, and never replace settings that already exist.
+async function seedDefaults() {
+  const { config } = await store.get('config');
+  if (config) return;
+  let raw;
+  try { raw = await (await fetch(chrome.runtime.getURL('defaults.json'))).json(); } catch { return; }
+  await store.set({ config: normalize(raw) });
+}
+
+async function installed(d) {
+  const reason = d?.reason;
+  if (reason === 'install') await seedDefaults();
+  await boot();
+  if (reason === 'install') await chrome.runtime.openOptionsPage();
+}
+
 eraseOwnCompleted();
 ensureBoot();
-chrome.runtime.onInstalled.addListener(boot);
+chrome.runtime.onInstalled.addListener(installed);
 chrome.runtime.onStartup.addListener(() => { recover(); return boot(); });
 chrome.storage.onChanged.addListener((changes) => {
   if (!changes.config) return;

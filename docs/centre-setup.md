@@ -5,6 +5,11 @@ Do this once per machine. After step 6 the extension needs no clicks on browser 
 ## 1. Install
 Two routes; pick one per centre.
 
+**Pen-drive installer (unpacked copy, one machine at a time)**
+- Build it once: `node tools/build-installer.mjs` writes `dist/exameye-installer/` (and a zip). Copy that folder to a pen drive. It holds the extension, `Install-ExamEye.cmd` / `Install-ExamEye.command`, `READ-ME-FIRST.txt`, the guide and the deck.
+- On each machine run the installer: it copies the extension to `<home>\ExamEye`, asks for the desk's seat ID, writes it into `ExamEye\defaults.json`, puts the folder path on the clipboard and opens `chrome://extensions`. Then Developer mode ON -> Load unpacked -> paste the path.
+- `defaults.json` next to `manifest.json` is read once, on first install, when no settings exist yet; the setup page opens by itself with those values. Later updates never overwrite saved settings. The centre's values live in `installer/defaults.json` in the repo.
+
 **Unpacked copy (hand-installed, one machine at a time)**
 - Copy the ExamEye folder (the one containing `manifest.json`) somewhere it will not be moved or deleted, e.g. `C:\ExamEye` or `/opt/exameye`. Chrome loads it from that path on every start; moving it disables the extension.
 - Chrome: `chrome://extensions` -> Developer mode ON -> Load unpacked -> select the folder.
@@ -32,9 +37,9 @@ Two routes; pick one per centre.
 | Field | Value |
 |---|---|
 | Exam start URL prefix | the URL every candidate lands on first, up to but excluding the per-candidate tail |
-| Exam in-progress URL prefix (optional; blank = start page origin) | leave blank unless the paper runs on a different path/host than the start page |
+| Exam in-progress URL prefix (optional; blank = start page origin) | leave blank so every page of the site (instructions, paper, submit) counts; a prefix narrower than the whole paper flow makes the platform's own submit page a `PARALLEL_PAGE` (seen with `/testpanel/` on the Aakash test platform, 2026-09-16) |
 | Result URL prefix | the URL shown when the paper is submitted; optional if an end button or marker is set |
-| Start button label (optional; blank = arm on start URL) | the visible label of the button that starts the paper, if the platform stays on one URL |
+| Start button label (optional; blank = arm on start URL) | leave blank: the session then starts when the start URL loads. Set it only when the platform stays on one URL and the control is a real button/link/role=button whose visible text equals the label exactly; a styled div is never seen (the Aakash test platform's Proceed control was never seen in two trials on 2026-09-16, so use blank there) |
 | End button label(s), comma-separated (optional) | the platform's submit label(s); where the platform shows a confirm dialog, use the **confirm** button's label, not the initial Finish/Submit button (see spec §14 item 11) |
 | Submitted-screen marker text (optional; must appear only after submission) | a phrase that appears on the submitted screen and nowhere else in the paper |
 | Maximum paper length (minutes; 0 = no backstop) | recommended: the paper's scheduled length plus a small margin |
@@ -65,7 +70,7 @@ Windows needs nothing. macOS: System Settings -> Privacy & Security -> Screen Re
 4. Trigger the real screensaver or lock screen (hot corner, or wait out the machine's idle timeout) and then resume. Popup "Counters" must show `SCREENSAVER: 1`, and `log.txt` in the session folder must contain a line with `IDLE_START` and `state="locked"` - this holds on the idle-timeout path too: Chrome may report `state="idle"` first (detection interval) and only report `state="locked"` once the screensaver actually engages, and the log now shows both transitions (an `IDLE_END` closing the idle interval followed by a fresh `IDLE_START state="locked"`). If the platform never reports a locked state at all, `state="idle"` is expected instead - this is the documented `idle` fallback classification and is not a fault. `log.txt` is written on the next flush, not instantly - check the popup's "Last flush" time before checking the file.
 On a throw-away candidate account walk every in-paper screen and confirm the configured marker phrase appears on none of them, then submit and confirm it appears on the submitted screen; the popup must show `CLOSING` and return to `IDLE` after the tail (default 5 minutes) or when the tab is closed.
 5. Navigate the exam tab to the result URL. State returns to `IDLE`.
-6. Check `<Chrome download directory>/ExamEye/<YYYYMMDD-HHMMSS_SEAT>/` contains `log.txt`, `events.jsonl`, `summary.txt`, `summary.html`, `screenshots/` with at least 3 JPEGs. If Desktop capture is `on`, it also contains `screenshots/desktop/` with at least 2 JPEGs, and `summary.html` must show them next to `FOCUS_LEFT_CHROME`/`DESKTOP_FRAME` (on macOS, confirm they are not black). Open `summary.html` and confirm the screenshots display. `summary.txt` must show `Outcome: SUBMITTED` (or `AUTO_SUBMITTED` / `RESULT` as applicable), a `Trigger:` line, a `Post-submit tail` line with a screenshot count, and (if Desktop capture is `on`) a `Desktop:` line.
+6. Check `<Chrome download directory>/ExamEye/<YYYYMMDD-HHMMSS_SEAT>/` contains `log.txt`, `events.json`, `summary.txt`, `summary.html`, `screenshots/` with at least 3 JPEGs. If Desktop capture is `on`, it also contains `screenshots/desktop/` with at least 2 JPEGs, and `summary.html` must show them next to `FOCUS_LEFT_CHROME`/`DESKTOP_FRAME` (on macOS, confirm they are not black). Open `summary.html` and confirm the screenshots display. `summary.txt` must show `Outcome: SUBMITTED` (or `AUTO_SUBMITTED` / `RESULT` as applicable), a `Trigger:` line, a `Post-submit tail` line with a screenshot count, and (if Desktop capture is `on`) a `Desktop:` line.
 7. The download shelf/flyout must not have shown any ExamEye files. If it did on Edge, that build lacks `downloads.setUiOptions`; recording is unaffected.
 8. Edge vertical tabs / side panel can trigger DEVTOOLS_OPENED on every page - close them for the exam.
 9. A result page opening in a new tab (not the exam tab) also ends the session: `SESSION_DISARMED{outcome:RESULT}` is recorded from that tab and the popup returns to `IDLE`.
@@ -85,4 +90,4 @@ Requires Node 22 on the invigilator's machine (or any machine the folder is copi
 ```
 node tools/verify.mjs "<download dir>/ExamEye/<session>"
 ```
-`OK` means the hash chain was recomputed from `log.txt` and matches, `events.jsonl` was cross-checked line by line against it, and every screenshot referenced by an event exists. `BROKEN` means the folder was edited or is incomplete after the session ended; the first bad line printed says where the check found the problem. The check is offline and never modifies the folder.
+`OK` means the hash chain was recomputed from `log.txt` and matches, `events.json` was cross-checked event by event against it, and every screenshot referenced by an event exists. `BROKEN` means the folder was edited or is incomplete after the session ended; the first bad line printed says where the check found the problem. The check is offline and never modifies the folder.

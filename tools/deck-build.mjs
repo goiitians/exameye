@@ -291,7 +291,7 @@ const slide = () => { const s = pres.addSlide(); s.background = { color: WHITE }
     ['doc', 'blue', 'summary.html', 'the report: flags, timeline, every screenshot'],
     ['doc', 'blue', 'summary.txt', 'the same report as plain text'],
     ['doc', 'navy', 'log.txt', 'one line per event, each chained to the previous'],
-    ['doc', 'navy', 'events.jsonl', 'the same events for software to read'],
+    ['doc', 'navy', 'events.json', 'the same events for software to read'],
     ['camera', 'blue', 'screenshots/', 'exam-tab pictures, named by time and event'],
     ['camera', 'blue', 'screenshots/desktop/', 'whole-screen pictures, when capture is on'],
   ];

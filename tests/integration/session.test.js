@@ -79,10 +79,10 @@ test('arm on start page, record a tab switch, disarm on result, files written', 
     assert.deepEqual(await verify(log.trimEnd().split('\n')), { ok: true, firstBad: -1 });
 
     const eventsItem = created.find(i => i.mime === 'application/json');
-    assert.ok(eventsItem, 'expected an events.jsonl write');
-    const events = decodeDataUrl(eventsItem.url).trimEnd().split('\n').map(l => JSON.parse(l));
+    assert.ok(eventsItem, 'expected an events.json write');
+    const events = JSON.parse(decodeDataUrl(eventsItem.url));
     const tabSwitch = events.find(e => e.name === 'TAB_SWITCH');
-    assert.ok(tabSwitch, 'expected a TAB_SWITCH event in events.jsonl');
+    assert.ok(tabSwitch, 'expected a TAB_SWITCH event in events.json');
     assert.ok(tabSwitch.shot?.endsWith('_TAB_SWITCH.jpg'), `expected a screenshot for TAB_SWITCH, got ${tabSwitch.shot}`);
 
     const jpegs = created.filter(i => i.mime === 'image/jpeg');
@@ -148,8 +148,8 @@ test('desktop capture: auto-accepted share logs STARTED, a PERIODIC desktop fram
     assert.deepEqual(await verify(log.trimEnd().split('\n')), { ok: true, firstBad: -1 });
 
     const eventsItem = (await readDl()).find(i => i.mime === 'application/json');
-    assert.ok(eventsItem, 'expected an events.jsonl write');
-    const events = decodeDataUrl(eventsItem.url).trimEnd().split('\n').map(l => JSON.parse(l));
+    assert.ok(eventsItem, 'expected an events.json write');
+    const events = JSON.parse(decodeDataUrl(eventsItem.url));
     assert.ok(!events.some(e => e.name === 'WINDOW_OPENED'), 'expected no WINDOW_OPENED for the holder window');
     assert.ok(!events.some(e => e.name === 'PARALLEL_PAGE' && (e.data.url || '').startsWith('chrome-extension://')), 'expected no PARALLEL_PAGE for the holder page');
   } finally {

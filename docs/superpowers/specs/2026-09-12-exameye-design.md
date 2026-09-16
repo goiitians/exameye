@@ -314,7 +314,7 @@ to ended) is a no-op in the reducer.
 ### Session end (`END` effect)
 
 1. Render `summary.txt` and `summary.html` (inline screenshots) from `events`, `shots`, session.
-2. Enqueue final `log.txt`, `events.jsonl`, `summary.txt`, `summary.html`; flush.
+2. Enqueue final `log.txt`, `events.json`, `summary.txt`, `summary.html`; flush.
 3. If the `summary.html` download is rejected, enqueue the linked variant
    (`renderSummaryHtml({... inlineShots:false})`, screenshots referenced as `screenshots/<file>`).
 4. Clear `session`→IDLE, `events`, `lines`, `shots`. `pending` is **kept** (file names include the
@@ -613,13 +613,16 @@ Keys: `tab`, `win` (when present) first, then `data` keys in insertion order. Ex
 ```
 `hashchain.verify(lines)` recomputes the chain and returns `{ok, firstBad}`; summary.txt reports
 the result. A tampered or truncated file breaks the chain from that line onward.
-`tools/verify.mjs` recomputes the chain (`core/verify.checkSession`) and cross-checks `events.jsonl`
+`tools/verify.mjs` recomputes the chain (`core/verify.checkSession`) and cross-checks `events.json`
 and screenshot presence.
 
-### events.jsonl
+### events.json
 
-One JSON object per line, same order as log.txt (no header line):
+A JSON array, one event per line, same order as log.txt (no header line). Named `.json`, not
+`.jsonl`: Chrome renames a download to an extension on the MIME type's list (its own table plus
+OS-registered ones), and `.json` is the only name `application/json` keeps on every machine.
 ```
+[
 {"seq":1,"ts":"2026-09-12T03:45:02.117Z","t":1789530302117,"name":"SESSION_ARMED","tabId":41,"windowId":3,"data":{"url":"…"},"shot":"screenshots/…jpg","hash":"3f9a1c0e"}
 ```
 `hash` is the hash of the corresponding log.txt line (so the two files cross-check).
@@ -736,6 +739,12 @@ fragment and appends `*` to the path (`https://exam.example.com/start?x=1` →
 | `closing` | `when: closingUntil` (one-shot; re-created on `END_CLICK` in CLOSING; cleared at disarm) | `CLOSING_TIMER` |
 | `desktopAsk` | `when: desktop.at + desktopRepromptMin*60000` (one-shot; set on decline/failure when `desktopRepromptMin>0`; cleared when the stream starts and at session end) | `promptDesktop` while ARMED/CLOSING and `meta.desktop.state` is `declined`/`error` (§6a) |
 
+On `runtime.onInstalled` with `reason === 'install'` the SW reads `defaults.json` from its own
+folder (`fetch(chrome.runtime.getURL('defaults.json'))`), stores it as `config` (normalised) only
+when no `config` exists yet, boots, and opens the options page; any other reason only boots. A
+checkout without the file behaves as before. `tools/build-installer.mjs` places
+`installer/defaults.json` next to the manifest in the pen-drive installer.
+
 `tick` also doubles as the boot marker: `ensureBoot()` runs at every SW start (module top level, not
 just `onInstalled`/`onStartup`) and treats a missing `tick` alarm as an enabled lifetime that never
 booted, running full `boot()` in that case.
@@ -790,7 +799,7 @@ in the code branches on the OS either.
   `worker.evaluate(cfg => chrome.storage.local.set({config: cfg}), cfg)`.
 - Scenarios: arm on start page → `session.state==='ARMED'` and `log.txt` exists; open second tab
   → `TAB_SWITCH`/`PARALLEL_PAGE` events and a screenshot file; navigate exam tab to result →
-  IDLE, `summary.txt`, `summary.html`, `events.jsonl` present, log chain verifies.
+  IDLE, `summary.txt`, `summary.html`, `events.json` present, log chain verifies.
 - Desktop capture scenario: `launch(config, { args: ['--auto-select-desktop-capture-source=Entire
   screen'] })` makes the picker auto-accept; the test asserts `DESKTOP_CAPTURE_STARTED`, a
   `desktopShot` path on a forced `PERIODIC` (the alarm is re-created from the worker with a

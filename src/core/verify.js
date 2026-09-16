@@ -7,7 +7,7 @@ export async function checkSession({ lines, events, exists }) {
   const chain = await verify(lines);
   if (!chain.ok) problems.push(`log chain broken at line ${chain.firstBad}`);
   const bodyLines = lines.length - 1;
-  if (events.length !== bodyLines) problems.push(`events.jsonl has ${events.length} events, log.txt has ${bodyLines} lines`);
+  if (events.length !== bodyLines) problems.push(`events.json has ${events.length} events, log.txt has ${bodyLines} lines`);
   for (let i = 0; i < Math.min(events.length, bodyLines); i++) {
     const h = await shortHash(lines[i + 1]);
     if (events[i].hash !== h) { problems.push(`event ${events[i].seq} hash ${events[i].hash} does not match log line ${i + 1} (${h})`); break; }

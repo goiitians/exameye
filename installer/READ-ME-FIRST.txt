@@ -1,0 +1,49 @@
+ExamEye installer
+=================
+
+What is on this pen drive
+  ExamEye\                  the extension (do not open or edit; the installer copies it)
+  Install-ExamEye.cmd       Windows: double-click this
+  Install-ExamEye.command   macOS: double-click this (or run it from Terminal, see below)
+  ExamEye-guide.pdf         what ExamEye does and how to read its reports
+  ExamEye-overview.pptx     the same as slides
+
+Install on a Windows machine
+  1. Double-click Install-ExamEye.cmd. It copies ExamEye to C:\Users\<you>\ExamEye,
+     asks for this desk's seat ID (press Enter to keep C01) and opens Chrome's Extensions page.
+  2. In Chrome: switch "Developer mode" on (top right), click "Load unpacked",
+     paste the folder path (the installer put it on the clipboard), click "Select Folder".
+  3. The ExamEye setup page opens by itself with all fields filled in.
+     Check the seat ID and click "Save settings".
+  4. Still on the Extensions page: ExamEye > Details > "Allow in Incognito": on.
+  5. Chrome Settings > Downloads: "Ask where to save each file before downloading": off.
+
+Install on a Mac
+  Same steps with Install-ExamEye.command; the extension is copied to /Users/<you>/ExamEye.
+  If double-clicking says the file cannot be executed, open Terminal and run:
+     bash "/Volumes/<pen drive name>/exameye-installer/Install-ExamEye.command"
+  In the "Load unpacked" dialog press Command-Shift-G to paste the path.
+  Also: System Settings > Privacy & Security > Screen Recording > enable Chrome, then quit and reopen Chrome.
+
+Then, on every machine (10 minutes)
+  Open the exam start page in a new tab. The ExamEye icon shows a red 0 and its popup says ARMED.
+  Switch to another tab and back, minimise and restore the window, then open the result page
+  or submit the test paper. Look in Downloads\ExamEye for the new session folder.
+  The full checklist is in the guide, section 4, step 5.
+
+Which settings are pre-filled
+  Exam start page       https://testplatform.aakash.ac.in/index.html
+  Paper pages           (blank: every page of the site counts as the paper)
+  Result page           https://testplatform.aakash.ac.in/results/final/index.html
+  Start button          (blank: recording starts when the start page loads)
+  Submit button         Submit
+  Submitted phrase      Subject Analysis
+  Maximum length        190 minutes;  keep watching after submit 5 minutes
+  Seat or centre ID     C01 (the installer asks; change it per desk)
+  Folder                Downloads\ExamEye
+  Routine screenshot    every 5 minutes;  give up after the tab is gone 15 minutes
+  Screen capture        on;  ask again after a refusal 1 minute
+  To change them for a whole batch of machines, edit ExamEye\defaults.json on the pen drive
+  before installing. They can also be changed any time on the setup page.
+
+Do not move or delete the ExamEye folder after installing: Chrome switches the extension off if it disappears.

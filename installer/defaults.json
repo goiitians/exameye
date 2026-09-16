@@ -1,0 +1,16 @@
+{
+  "startPrefix": "https://testplatform.aakash.ac.in/index.html",
+  "examPrefix": "",
+  "resultPrefix": "https://testplatform.aakash.ac.in/results/final/index.html",
+  "startButton": "",
+  "endButton": "Submit",
+  "endMarker": "Subject Analysis",
+  "maxMin": 190,
+  "tailMin": 5,
+  "seat": "C01",
+  "subfolder": "ExamEye",
+  "shotIntervalMin": 5,
+  "abandonMin": 15,
+  "desktopCapture": "on",
+  "desktopRepromptMin": 1
+}

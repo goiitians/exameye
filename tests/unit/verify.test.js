@@ -12,7 +12,7 @@ const dir = path.join(ROOT, 'tests/fixtures/session-ok');
 async function load(folder = dir) {
   const lines = (await readFile(path.join(folder, 'log.txt'), 'utf8')).split('\n');
   if (lines.at(-1) === '') lines.pop();
-  const events = (await readFile(path.join(folder, 'events.jsonl'), 'utf8')).split('\n').filter(Boolean).map((l) => JSON.parse(l));
+  const events = JSON.parse(await readFile(path.join(folder, 'events.json'), 'utf8'));
   const exists = (f) => access(path.join(folder, f)).then(() => true, () => false);
   return { lines, events, exists };
 }
@@ -34,7 +34,7 @@ test('a truncated log is a count mismatch', async () => {
   const f = await load();
   f.lines.pop();
   const r = await checkSession(f);
-  assert.ok(r.problems.includes('events.jsonl has 2 events, log.txt has 1 lines'), r.problems.join('; '));
+  assert.ok(r.problems.includes('events.json has 2 events, log.txt has 1 lines'), r.problems.join('; '));
 });
 
 test('a missing screenshot and an escaping path are reported', async () => {

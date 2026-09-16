@@ -186,7 +186,7 @@ ${fig('toolbar-badge.png', 'The red number on the icon is the count of flagged e
   <tr><td><code>summary.html</code></td><td>The report: outcome, flags, time away, parallel pages, the full timeline, every screenshot.</td></tr>
   <tr><td><code>summary.txt</code></td><td>The same report as plain text.</td></tr>
   <tr><td><code>log.txt</code></td><td>One line per event, each carrying a fingerprint of the line before it.</td></tr>
-  <tr><td><code>events.jsonl</code></td><td>The same events in a form other software can read.</td></tr>
+  <tr><td><code>events.json</code></td><td>The same events in a form other software can read.</td></tr>
   <tr><td><code>screenshots/</code></td><td>Exam-tab pictures, named by time and event.</td></tr>
   <tr><td><code>screenshots/desktop/</code></td><td>Whole-screen pictures, when capture is on.</td></tr>
 </table>

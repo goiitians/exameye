@@ -11,6 +11,7 @@ export function installFakeChrome() {
     runtime: {
       id: 'fake-ext-id', onStartup: evt(), onInstalled: evt(), onMessage: evt(),
       getURL: (p) => 'chrome-extension://fake-ext-id/' + p,
+      optionsOpened: 0, async openOptionsPage() { c.runtime.optionsOpened += 1; },
       sent: [], responder: null,
       async sendMessage(msg) {
         c.runtime.sent.push(msg);
@@ -82,7 +83,7 @@ export function installFakeChrome() {
       calls: [], items: [], erased: [], nextId: 1, failWhen: null, interruptWhen: null, uiOptions: null,
       async download(opts) {
         if (c.downloads.failWhen?.(opts)) throw new Error('Download rejected by fake');
-        c.downloads.calls.push(opts);
+        c.downloads.calls.push({ ...opts, filename: chromeFilename(opts.filename, opts.url) });
         const id = c.downloads.nextId++;
         const error = c.downloads.interruptWhen?.(opts);
         setTimeout(() => {
@@ -125,4 +126,16 @@ export function installFakeChrome() {
   };
   globalThis.chrome = c;
   return c;
+}
+
+// Chrome's GetCorrectedExtensionUnsafe (net/base/filename_util_internal.cc): a data: download whose MIME type has a
+// preferred extension gets that extension unless the requested one is on the type's list; unknown types keep the name.
+// application/x-ndjson -> ndjson is an OS-registered mapping seen on macOS (2026-09-16): the list is per machine, not Chrome's alone
+const CHROME_MIME_EXTENSIONS = { 'application/json': ['json'], 'application/x-ndjson': ['ndjson'], 'text/plain': ['txt', 'text'], 'text/html': ['html', 'htm'], 'image/jpeg': ['jpg', 'jpeg', 'jpe'] };
+export function chromeFilename(filename, url) {
+  const mime = /^data:([^;,]*)/.exec(url ?? '')?.[1] || 'text/plain';
+  const known = CHROME_MIME_EXTENSIONS[mime];
+  const ext = /\.([^./]+)$/.exec(filename)?.[1];
+  if (!known || (ext && known.includes(ext))) return filename;
+  return filename.replace(/\.[^./]*$/, '') + '.' + known[0];
 }

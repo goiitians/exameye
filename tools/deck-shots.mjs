@@ -135,21 +135,21 @@ try {
   const items = await collector.evaluate(() => window.__dl);
   const texts = items.filter(i => i.mime !== 'image/jpeg').map(i => decode(i.url)?.toString('utf8') || '');
   const log = texts.filter(t => t.startsWith('# ExamEye session')).at(-1);
-  const isEvents = (t) => { try { return typeof JSON.parse(t.split('\n')[0]).seq === 'number'; } catch { return false; } };
-  const eventsJsonl = texts.find(isEvents);
+  const isEvents = (t) => { try { const a = JSON.parse(t); return Array.isArray(a) && typeof a[0]?.seq === 'number'; } catch { return false; } };
+  const eventsJson = texts.find(isEvents);
   const summaryTxt = texts.find(t => t.startsWith('ExamEye summary'));
   const summaryHtml = texts.find(t => t.startsWith('<!doctype html>'));
-  if (!log || !eventsJsonl || !summaryTxt || !summaryHtml) {
+  if (!log || !eventsJson || !summaryTxt || !summaryHtml) {
     console.error('items:', JSON.stringify(items.map(i => [i.mime, (i.url || '').slice(0, 40), (decode(i.url) || '').toString('utf8').slice(0, 30)])));
     throw new Error('could not identify the session files');
   }
-  const events = eventsJsonl.trim().split('\n').map(l => JSON.parse(l));
+  const events = JSON.parse(eventsJson);
   const shotNames = [...new Set(events.flatMap(e => [e.shot, e.data?.desktopShot]).filter(Boolean))];
   const jpegs = items.filter(i => i.mime === 'image/jpeg').map(i => decode(i.url));
   if (jpegs.length !== shotNames.length) throw new Error(`${jpegs.length} JPEG downloads for ${shotNames.length} shot names`);
   const id = /^# ExamEye session (\S+)/.exec(log)[1];
   const sample = path.join(ROOT, 'docs/deck/sample-session', 'ExamEye', id);
-  const files = new Map([['log.txt', Buffer.from(log)], ['events.jsonl', Buffer.from(eventsJsonl)], ['summary.txt', Buffer.from(summaryTxt)], ['summary.html', Buffer.from(summaryHtml)]]);
+  const files = new Map([['log.txt', Buffer.from(log)], ['events.json', Buffer.from(eventsJson)], ['summary.txt', Buffer.from(summaryTxt)], ['summary.html', Buffer.from(summaryHtml)]]);
   shotNames.forEach((f, i) => files.set(f, jpegs[i]));
   for (const [f, buf] of files) { await mkdir(path.dirname(path.join(sample, f)), { recursive: true }); await writeFile(path.join(sample, f), buf); }
   const summary = await context.newPage();
