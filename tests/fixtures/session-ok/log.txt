@@ -1,0 +1,3 @@
+# ExamEye session 20260912-091502_A17 seat="A17" started=2026-09-12T03:45:02.000Z tz=+05:30 #00000000
+2026-09-12T03:45:02.000Z SESSION_ARMED tab=41 win=3 url="https://e.x/start?c=1" trigger="nav" shot="screenshots/20260912-091502_SESSION_ARMED.jpg" #89d36fb8
+2026-09-12T03:47:10.000Z TAB_SWITCH tab=42 win=3 toTabId=42 toUrl="https://g.x/" toTitle="G" toWindowId=3 incognito=false shot="screenshots/20260912-091710_TAB_SWITCH.jpg" #329c39bb

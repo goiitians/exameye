@@ -611,6 +611,8 @@ Keys: `tab`, `win` (when present) first, then `data` keys in insertion order. Ex
 ```
 `hashchain.verify(lines)` recomputes the chain and returns `{ok, firstBad}`; summary.txt reports
 the result. A tampered or truncated file breaks the chain from that line onward.
+`tools/verify.mjs` recomputes the chain (`core/verify.checkSession`) and cross-checks `events.jsonl`
+and screenshot presence.
 
 ### events.jsonl
 

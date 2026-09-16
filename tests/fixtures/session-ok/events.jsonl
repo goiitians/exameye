@@ -1,0 +1,2 @@
+{"seq":1,"ts":"2026-09-12T03:45:02.000Z","t":1789184702000,"name":"SESSION_ARMED","data":{"url":"https://e.x/start?c=1","trigger":"nav"},"shot":"screenshots/20260912-091502_SESSION_ARMED.jpg","tabId":41,"windowId":3,"hash":"329c39bb"}
+{"seq":2,"ts":"2026-09-12T03:47:10.000Z","t":1789184830000,"name":"TAB_SWITCH","data":{"toTabId":42,"toUrl":"https://g.x/","toTitle":"G","toWindowId":3,"incognito":false},"shot":"screenshots/20260912-091710_TAB_SWITCH.jpg","tabId":42,"windowId":3,"hash":"2ca912d9"}

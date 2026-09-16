@@ -78,3 +78,10 @@ On a throw-away candidate account walk every in-paper screen and confirm the con
 
 ## 8. Candidate notice
 Display or read out before the paper: "Your screen is recorded during this paper. Chrome will ask you to share your screen when the exam page opens: click the screen preview, then Share. Do not close the small ExamEye window or press Stop sharing." Cancel and Stop sharing are logged and re-asked.
+
+## 9. Verifying a session folder
+Requires Node 22 on the invigilator's machine (or any machine the folder is copied to). From the ExamEye folder, run:
+```
+node tools/verify.mjs "<download dir>/ExamEye/<session>"
+```
+`OK` means the hash chain was recomputed from `log.txt` and matches, `events.jsonl` was cross-checked line by line against it, and every screenshot referenced by an event exists. `BROKEN` means the folder was edited or is incomplete after the session ended; the first bad line printed says where the check found the problem. The check is offline and never modifies the folder.
