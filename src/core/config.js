@@ -50,3 +50,8 @@ export function effectiveExamPrefix(cfg) {
 export function resolved(cfg) {
   return { ...cfg, examPrefix: effectiveExamPrefix(cfg) };
 }
+
+export function changedKeys(before, after) {
+  const a = normalize(before ?? {}), b = normalize(after ?? {});
+  return Object.keys(DEFAULTS).filter(k => a[k] !== b[k]);
+}

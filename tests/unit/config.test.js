@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULTS, normalize, validate, effectiveExamPrefix, resolved } from '../../src/core/config.js';
+import { DEFAULTS, normalize, validate, effectiveExamPrefix, resolved, changedKeys } from '../../src/core/config.js';
 
 const good = { startPrefix: 'https://exam.example.com/start', examPrefix: '', resultPrefix: 'https://exam.example.com/result', seat: 'A17', subfolder: 'ExamEye', shotIntervalMin: 10, abandonMin: 10, startButton: '', endButton: '', endMarker: '', maxMin: 0, tailMin: 5, desktopCapture: 'on', desktopRepromptMin: 5 };
 
@@ -87,4 +87,12 @@ test('desktopRepromptMin integer 0-60', () => {
   assert.deepEqual(validate({ ...good, desktopRepromptMin: 61 }).map(e => e.field), ['desktopRepromptMin']);
   assert.deepEqual(validate({ ...good, desktopRepromptMin: 2.5 }).map(e => e.field), ['desktopRepromptMin']);
   assert.deepEqual(validate({ ...good, desktopRepromptMin: 0 }), []);
+});
+
+test('changedKeys lists the normalised fields that differ, in DEFAULTS order', () => {
+  const a = { ...DEFAULTS, startPrefix: 'https://e.x/start', seat: 'A' };
+  assert.deepEqual(changedKeys(a, { ...a, tailMin: '2', subfolder: ' ExamEye ' }), ['tailMin']);
+  assert.deepEqual(changedKeys(a, { ...a, desktopRepromptMin: 0, seat: 'B' }), ['seat', 'desktopRepromptMin']);
+  assert.deepEqual(changedKeys(a, a), []);
+  assert.deepEqual(changedKeys(undefined, {}), []);
 });

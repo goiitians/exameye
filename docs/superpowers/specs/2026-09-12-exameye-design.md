@@ -147,6 +147,10 @@ substring of the normalised page text.
 `config.validate(cfg)` returns `[{field, message}]`; an empty array means valid. The SW refuses to
 arm while the config is invalid and stores the errors in `meta.configErrors` for the popup.
 
+The SW logs `CONFIG_CHANGED{keys}` (`config.changedKeys`) for every `storage.onChanged` on
+`config` while a session is ARMED or CLOSING; `subfolder` is copied into `session.subfolder` at
+arm and used for every path of that session.
+
 ## 4. Session state machine
 
 Pure reducer in `src/core/session.js`:
@@ -181,7 +185,9 @@ turns effects into API calls.
 `TICK{windows:[{id,state}], examTabPresent}` · `STARTUP{examTabs:[{tabId,windowId,url}]}` ·
 `GAP{lastSeenAt,reason}` · `ABANDON_TIMER{}` · `MAX_TIMER{}` · `CLOSING_TIMER{}` · `PERIODIC{}` ·
 `DESKTOP{name,data,pre?}` (§6a; `name` ∈ STARTED/DECLINED/STOPPED/FAILED/FRAME, reduced to the
-matching `DESKTOP_*` event with `data` copied through, only while ARMED/CLOSING).
+matching `DESKTOP_*` event with `data` copied through, only while ARMED/CLOSING) ·
+`CONFIG_CHANGED{keys}` (§3; `keys` from `config.changedKeys`, logged only while not IDLE and only
+when non-empty).
 
 `NAV` is dispatched from `webNavigation.onCommitted`, `onHistoryStateUpdated` and
 `onReferenceFragmentUpdated` (frameId 0) alike, so single-page-app route changes and fragment
@@ -348,6 +354,7 @@ Field `data` per event; every event also has `seq`, `ts` (ISO 8601 UTC), `t` (ep
 | IDLE_END | chrome.idle.onStateChanged | idleMs | no |
 | DOWNLOAD_STARTED | downloads.onCreated (not `byExtensionId===runtime.id`, and not a `data:` URL — see §14) | url, filename, mime | yes |
 | EXTENSION_GAP | SW boot / runtime.onStartup | lastSeenAt, gapMs, reason (`sw-restart`/`browser-restart`) | no |
+| CONFIG_CHANGED | storage.onChanged on config while ARMED/CLOSING | keys | yes |
 | PERIODIC | alarm `periodic` | desktopShot? | yes |
 | DESKTOP_CAPTURE_STARTED | holder `started` (§6a); at arm when already sharing | width, height, pickMs, resumed? | yes |
 | DESKTOP_CAPTURE_DECLINED | holder `cancelled`; holder window closed while prompting | asks | yes |
@@ -541,7 +548,8 @@ primary screen the candidate picked); nothing here changes when a session starts
 
 - **Sink:** `chrome.downloads.download({ url:'data:<mime>;base64,<b64>', filename:
   '<subfolder>/<sessionId>/<relative>', conflictAction:'overwrite', saveAs:false })`. Verified in
-  the spike from a SW with no page and no click, on install and on startup.
+  the spike from a SW with no page and no click, on install and on startup. All paths use
+  `session.subfolder` (frozen at arm, §3), not the live `config.subfolder`.
 - **Encoding:** text files are UTF-8 → base64 via `TextEncoder` + chunked `btoa` (`sink.toDataUrl`);
   JPEGs are already base64 from `captureVisibleTab`.
 - **Pending map:** storage key `pending = { [relativePathWithSession]: { mime, b64 } }`. A later

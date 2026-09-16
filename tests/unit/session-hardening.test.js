@@ -37,3 +37,16 @@ test('a move out of a fullscreen window does not fake a FULLSCREEN_EXIT on the n
   r = reduce(r.session, { kind: 'TICK', at: T0 + 3000, windows: [{ id: 7, state: 'normal' }], examTabPresent: true }, cfg);
   assert.deepEqual(names(r), []);
 });
+
+test('CONFIG_CHANGED with keys is logged while not IDLE; empty keys and IDLE emit nothing', () => {
+  let r = reduce(arm().session, { kind: 'CONFIG_CHANGED', keys: ['tailMin'], at: T0 + 1000 }, cfg);
+  assert.deepEqual(names(r), ['CONFIG_CHANGED']);
+  assert.deepEqual(r.events[0].data, { keys: ['tailMin'] });
+  r = reduce(r.session, { kind: 'CONFIG_CHANGED', keys: [], at: T0 + 2000 }, cfg);
+  assert.deepEqual(names(r), []);
+  assert.deepEqual(names(reduce(initial(), { kind: 'CONFIG_CHANGED', keys: ['seat'], at: T0 }, cfg)), []);
+});
+
+test('arm freezes the subfolder into the session', () => {
+  assert.equal(arm().session.subfolder, 'ExamEye');
+});

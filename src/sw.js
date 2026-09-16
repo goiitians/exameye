@@ -4,7 +4,7 @@ import { registerExamScript } from './adapters/scripting.js';
 import { getWindow, getAllWindows, focusedWindowId, lastFocusedWindowId } from './adapters/windows.js';
 import { getTab, queryAllTabs, queryActiveTab, awaitLoaded } from './adapters/tabs.js';
 import { captureJpeg } from './adapters/capture.js';
-import { normalize, validate, resolved } from './core/config.js';
+import { normalize, validate, resolved, changedKeys } from './core/config.js';
 import { initial, reduce } from './core/session.js';
 import { headerLine, formatLine, chainLine } from './core/logline.js';
 import { GENESIS, shortHash, verify } from './core/hashchain.js';
@@ -106,7 +106,8 @@ async function dispatchNow(input) {
     events.push(ev);
   }
   if (newEvents.length) {
-    const base = `${cfg.subfolder}/${(r.session.state !== 'IDLE' ? r.session : session).id}`;
+    const sess = r.session.state !== 'IDLE' ? r.session : session;
+    const base = `${sess.subfolder ?? cfg.subfolder}/${sess.id}`;
     let { pending = {} } = await store.get('pending');
     pending = putText(pending, `${base}/log.txt`, 'text/plain', lines.join('\n') + '\n');
     for (const s of added) pending = putBase64(pending, `${base}/${s.file}`, 'image/jpeg', s.b64);
@@ -341,7 +342,7 @@ async function desktopAskNow() {
 // did to the live events/lines/shots keys.
 async function endSession(e, cfg) {
   const { session, outcome, events, lines, shots } = e;
-  const base = `${cfg.subfolder}/${session.id}`;
+  const base = `${session.subfolder ?? cfg.subfolder}/${session.id}`;
   const ctx = { session, outcome, endedAt: now(), events, tally: tally(events), integrity: { ...(await verify(lines)), lines: lines.length } };
   const { pending: p0 = {} } = await store.get('pending');
   let pending = putText(p0, `${base}/log.txt`, 'text/plain', lines.join('\n') + '\n');
@@ -441,7 +442,11 @@ async function boot() {
 eraseOwnCompleted();
 chrome.runtime.onInstalled.addListener(boot);
 chrome.runtime.onStartup.addListener(() => { recover(); return boot(); });
-chrome.storage.onChanged.addListener((changes) => { if (changes.config) applyConfig(); });
+chrome.storage.onChanged.addListener((changes) => {
+  if (!changes.config) return;
+  applyConfig();
+  dispatch({ kind: 'CONFIG_CHANGED', keys: changedKeys(changes.config.oldValue, changes.config.newValue), at: now() });
+});
 async function onNav(d) {
   if (d.frameId !== 0) return;
   const tab = await getTab(d.tabId);

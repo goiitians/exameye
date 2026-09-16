@@ -35,7 +35,7 @@ export function reduce(session, input, cfg) {
 function arm(s, input, cfg, emit, out, { trigger, label }) {
   const maxAt = cfg.maxMin > 0 ? input.at + cfg.maxMin * 60000 : null;
   Object.assign(s, {
-    state: 'ARMED', id: sessionId(input.at, cfg.seat), seat: cfg.seat, startedAt: input.at,
+    state: 'ARMED', id: sessionId(input.at, cfg.seat), seat: cfg.seat, subfolder: cfg.subfolder, startedAt: input.at,
     examTabId: input.tabId, examWindowId: input.windowId, examUrl: input.url, seq: 0,
     lastActivityAt: input.at, tabLostAt: null, windowState: 'normal', away: freshAway(),
     maxAt, endClickAt: null, markerSeen: false,
@@ -167,6 +167,9 @@ const HANDLERS = {
     if (s.state !== 'CLOSING') return;
     const ids = { ...input, tabId: s.examTabId, windowId: s.examWindowId };
     disarm(s, out, emit, ids, s.outcome, s.trigger, tailExtra(s));
+  },
+  CONFIG_CHANGED(s, input, cfg, emit) {
+    if (input.keys.length) emit('CONFIG_CHANGED', { keys: input.keys }, input);
   },
 };
 
