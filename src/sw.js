@@ -19,10 +19,13 @@ import { putText, putBase64, remove, dataUrl, toBase64 } from './core/sink.js';
 import { tally } from './core/counters.js';
 import { renderSummaryText } from './core/summary-text.js';
 import { renderSummaryHtml } from './core/summary-html.js';
+import { flagCount } from './core/flags.js';
+import { setBadge } from './adapters/badge.js';
 
 const GAP_MS = 90000;
 const CLOCK_SLACK_MS = 5000;
 const SHOT_GAP_MS = 2000;
+const BADGE_COLOR = '#d03b3b';
 const PAINT_WAIT_MS = 1500;
 const FOCUS_SETTLE_MS = 500;
 // arm/disarm fire at onCommitted, before the new page has painted; without a wait the shot shows the previous page
@@ -67,6 +70,11 @@ async function applyConfigNow() {
 export const applyConfig = () => enqueue(applyConfigNow);
 
 export const dispatch = (input) => enqueue(() => dispatchNow(input));
+
+async function paintBadge(session, events) {
+  if (!session || session.state === 'IDLE') return setBadge('');
+  return setBadge(String(flagCount(tally(events).counts)), BADGE_COLOR);
+}
 
 async function dispatchNow(input) {
   const cfg = await loadConfig();
@@ -133,6 +141,7 @@ async function dispatchNow(input) {
     Object.assign(batch, { events: [], lines: [], shots: {}, meta: { ...batch.meta, pendingEnd } });
   }
   await store.set(batch);
+  if (newEvents.length || endEffect) await paintBadge(r.session, endEffect ? [] : events);
   await runEffects(r.effects, cfg, pendingEnd);
   if (newEvents.length) await flushNow();
   if (r.session.state === 'ARMED' && session.state === 'IDLE') {
@@ -448,8 +457,10 @@ async function boot() {
 // Enabling a disabled extension fires neither onInstalled nor onStartup; a missing tick alarm is
 // the signature of an enabled lifetime that never booted.
 async function ensureBoot() {
-  if (await alarms.get('tick')) { await suppressUi(); return; }
-  await boot();
+  if (await alarms.get('tick')) await suppressUi();
+  else await boot();
+  const { session, events = [] } = await store.get(['session', 'events']);
+  await paintBadge(session, events);
 }
 
 eraseOwnCompleted();

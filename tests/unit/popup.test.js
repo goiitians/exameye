@@ -5,7 +5,7 @@ import { installFakeChrome } from './fake-chrome.js';
 import { installFakeDom } from './fake-dom.js';
 
 const chrome = installFakeChrome();
-const dom = installFakeDom(['state', 'session', 'flush', 'errors', 'counts', 'options', 'desktop']);
+const dom = installFakeDom(['state', 'session', 'flush', 'errors', 'counts', 'options', 'desktop', 'flags']);
 dom.options.hidden = true;
 const opened = [];
 chrome.runtime.openOptionsPage = async () => { opened.push(1); };
@@ -13,7 +13,7 @@ const tick = () => new Promise((r) => setTimeout(r, 5));
 
 test('popup has the live-state slots and a module script', async () => {
   const html = await readFile(new URL('../../src/popup/popup.html', import.meta.url), 'utf8');
-  for (const id of ['state', 'session', 'flush', 'errors', 'counts', 'options', 'desktop']) assert.match(html, new RegExp(`id="${id}"`), id);
+  for (const id of ['state', 'session', 'flush', 'errors', 'counts', 'options', 'desktop', 'flags']) assert.match(html, new RegExp(`id="${id}"`), id);
   assert.match(html, /<script type="module" src="popup.js"><\/script>/);
 });
 
@@ -26,19 +26,21 @@ test('render: idle with nothing stored', async () => {
   assert.equal(dom.errors.textContent, '-');
   assert.equal(dom.counts.textContent, '(no events)');
   assert.equal(dom.desktop.textContent, 'off');
+  assert.equal(dom.flags.textContent, '0');
 });
 
 test('render shows the desktop line', async () => {
   const since = Date.UTC(2026, 8, 13, 9, 0, 0);
   await chrome.storage.local.set({
     meta: { desktop: { state: 'on', at: since, since, holderWindowId: 1, asks: 1, width: 1920, height: 1080, error: null, nextAskAt: null } },
-    events: [{ name: 'FOCUS_LEFT_CHROME', data: { desktopShot: 'screenshots/desktop/a.jpg' } }, { name: 'FOCUS_RETURNED', data: { desktopShot: 'screenshots/desktop/b.jpg' } }],
+    events: [{ name: 'FOCUS_LEFT_CHROME', data: { desktopShot: 'screenshots/desktop/a.jpg' } }, { name: 'FOCUS_LEFT_CHROME', data: { desktopShot: 'screenshots/desktop/b.jpg' } }],
   });
   await tick();
   const pad = (n) => String(n).padStart(2, '0');
   const d = new Date(since);
   const hms = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   assert.equal(dom.desktop.textContent, `on since ${hms} (2 frames)`);
+  assert.equal(dom.flags.textContent, '2');
 });
 
 test('the Open options link is shown only while the config is invalid, and opens the options page', async () => {

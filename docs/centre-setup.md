@@ -57,6 +57,7 @@ Windows needs nothing. macOS: System Settings -> Privacy & Security -> Screen Re
 ## 6. Dry run (10 minutes)
 1. Open the exam start URL in a new tab. Click the ExamEye toolbar icon: popup "State" must show `ARMED` and "Session" a session id.
    If a Start button label is configured, the popup must still show `IDLE` after the start page loads and `ARMED` only after the Start button is clicked.
+   The toolbar icon shows a red badge with `0` once ARMED; it counts flagged events (tab switches, parallel pages, copy, paste, focus left, …) and clears when the session ends.
 1a. If Desktop capture is `on`, the start page also opens a small "ExamEye screen capture" window and Chrome's "Share your entire screen" dialog; click the screen preview, then **Share** (Chrome enables Share only after the preview is clicked). The popup must show `Desktop capture: on since HH:MM:SS`. The small window minimises itself; do not close it.
 2. Open a second tab to any site, then return. Popup "Counters" must show `TAB_SWITCH: 1`.
 2a. If Desktop capture is `on`, click the desktop or another application for 15 s, then return to Chrome.

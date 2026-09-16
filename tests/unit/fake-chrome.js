@@ -117,6 +117,11 @@ export function installFakeChrome() {
         return ids === undefined ? [...c.scripting.registered] : c.scripting.registered.filter((r) => ids.includes(r.id));
       },
     },
+    action: {
+      badge: { text: '', color: null },
+      async setBadgeText({ text }) { c.action.badge.text = text; },
+      async setBadgeBackgroundColor({ color }) { c.action.badge.color = color; },
+    },
   };
   globalThis.chrome = c;
   return c;

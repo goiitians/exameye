@@ -1,5 +1,6 @@
 import { fmtDuration, fmtLocal, tzOffset } from './ids.js';
 import { describeOutcome, describeDesktopSummary } from './summary-text.js';
+import { FLAGS } from './flags.js';
 
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 export const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ESC[c]);
@@ -13,25 +14,6 @@ const clock = (t) => fmtLocal(t).slice(11);
 
 // status palette (icon + label always accompany the colour)
 const OUTCOME = { SUBMITTED: 'good', AUTO_SUBMITTED: 'good', RESULT: 'good', TIMED_OUT: 'warning', ABANDONED: 'critical' };
-const FLAGS = [
-  ['PARALLEL_PAGE', 'Parallel pages', 'critical'],
-  ['TAB_SWITCH', 'Tab switches', 'warning'],
-  ['FOCUS_LEFT_CHROME', 'Left Chrome', 'warning'],
-  ['INCOGNITO_WINDOW_OPENED', 'Incognito windows', 'critical'],
-  ['DEVTOOLS_OPENED', 'DevTools', 'critical'],
-  ['COPY', 'Copy', 'serious'],
-  ['CUT', 'Cut', 'serious'],
-  ['PASTE', 'Paste', 'serious'],
-  ['PRINT', 'Print', 'serious'],
-  ['DRAG', 'Drag out', 'serious'],
-  ['DOWNLOAD_STARTED', 'Downloads', 'serious'],
-  ['WINDOW_MINIMIZED', 'Window minimised', 'warning'],
-  ['FULLSCREEN_EXIT', 'Fullscreen exits', 'warning'],
-  ['SCREENSAVER', 'Screensaver / lock', 'warning'],
-  ['EXTENSION_GAP', 'Recording gaps', 'serious'],
-  ['CONFIG_CHANGED', 'Config changed', 'critical'],
-  ['CLOCK_BACKWARDS', 'Clock set back', 'critical'],
-];
 const ICON = { good: '&#10003;', warning: '&#9650;', serious: '&#9679;', critical: '&#10007;' };
 
 const badge = (level, text) => `<span class="badge ${level}">${ICON[level]} ${h(text)}</span>`;

@@ -53,6 +53,7 @@ src/
     counters.js         tally(events): counts, durations, parallel-page table
     summary-text.js     summary.txt renderer
     summary-html.js     summary.html renderer
+    flags.js            FLAGS catalogue and flagCount(counts): shared by summary.html, popup, badge
   adapters/             THIN wrappers around chrome.*; no business logic
     storage.js          get/set/patch on chrome.storage.local
     alarms.js           create/clear named alarms
@@ -548,6 +549,12 @@ controlled; a candidate can Cancel, Stop or close the holder repeatedly (each is
 tab screenshot and re-asked per the policy above); frames show the screen Chrome exposes (the
 primary screen the candidate picked); nothing here changes when a session starts or ends.
 
+## 6b. Toolbar badge
+
+Text = number of flagged events (`flags.flagCount(tally(events).counts)`), background `#d03b3b`.
+Painted inside the queue after every dispatch that appended events and at SW start from storage;
+empty while IDLE.
+
 ## 7. Persistence design
 
 - **Sink:** `chrome.downloads.download({ url:'data:<mime>;base64,<b64>', filename:
@@ -677,7 +684,7 @@ fields, thumbnail link, desktop-frame link from `data.desktopShot` or a `DESKTOP
 tail-phase rows are visible by their `phase:"tail"` data key), and a screenshots section listing
 tab screenshots and desktop frames alike, each JPEG as `<img src="data:image/jpeg;base64,…">`
 (inline variant) or `<img src="screenshots/<file>">` (linked variant). All text is HTML-escaped by
-the renderer (`escapeHtml`).
+the renderer (`escapeHtml`). Flags section rows come from `core/flags.js`.
 
 ## 9. Permissions & manifest
 

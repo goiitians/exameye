@@ -1,5 +1,6 @@
 import { tally } from '../core/counters.js';
 import { describeDesktop } from '../core/desktop.js';
+import { flagCount } from '../core/flags.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -16,6 +17,7 @@ async function render() {
   const { counts, desktop } = tally(events);
   $('counts').textContent = Object.keys(counts).sort().map(n => `${n}: ${counts[n]}`).join('\n') || '(no events)';
   $('desktop').textContent = describeDesktop(meta.desktop, desktop.frames);
+  $('flags').textContent = String(flagCount(counts));
 }
 
 $('options').addEventListener('click', (e) => { e.preventDefault(); chrome.runtime.openOptionsPage(); });
