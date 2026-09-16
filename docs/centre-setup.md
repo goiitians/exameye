@@ -37,7 +37,7 @@ Two routes; pick one per centre.
 | Field | Value |
 |---|---|
 | Exam start URL prefix | the URL every candidate lands on first, up to but excluding the per-candidate tail |
-| Exam in-progress URL prefix (optional; blank = start page origin) | leave blank so every page of the site (instructions, paper, submit) counts; a prefix narrower than the whole paper flow makes the platform's own submit page a `PARALLEL_PAGE` (seen with `/testpanel/` on the Aakash test platform, 2026-09-16) |
+| Exam in-progress URL prefix (optional; blank = start page origin) | leave blank so every page of the site (instructions, paper, submit) counts; a prefix narrower than the whole paper flow makes the platform's own submit page a `PARALLEL_PAGE` (seen with `/testpanel/` on the Aakash test platform, 2026-09-16). When it is set to the paper's own path, a paper page seen while idle (missed start page, extension reload mid-paper) also starts the session and asks for the screen share |
 | Result URL prefix | the URL shown when the paper is submitted; optional if an end button or marker is set |
 | Start button label (optional; blank = arm on start URL) | leave blank: the session then starts when the start URL loads. Set it only when the platform stays on one URL and the control is a real button/link/role=button whose visible text equals the label exactly; a styled div is never seen (the Aakash test platform's Proceed control was never seen in two trials on 2026-09-16, so use blank there) |
 | End button label(s), comma-separated (optional) | the platform's submit label(s); where the platform shows a confirm dialog, use the **confirm** button's label, not the initial Finish/Submit button (see spec §14 item 11) |

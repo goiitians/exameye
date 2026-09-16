@@ -11,7 +11,7 @@ import { GENESIS, shortHash, verify } from './core/hashchain.js';
 import { needsShot, needsDesktopFrame } from './core/events.js';
 import { EMPTY_TAIL, decide } from './core/tailshots.js';
 import { shotFile, desktopShotFile } from './core/ids.js';
-import { classify } from './core/urlmatch.js';
+import { classify, paperPrefixIsSpecific } from './core/urlmatch.js';
 import { EMPTY_DESKTOP, shouldPrompt, onHolder } from './core/desktop.js';
 import { supported, holderUrl, openHolder, showWindow, minimizeWindow, closeWindow, grabDesktop, setAway, askHolder, isHolderWindow } from './adapters/desktop.js';
 import { suppressUi, writeFile, eraseOwnCompleted } from './adapters/downloads.js';
@@ -504,7 +504,8 @@ async function onNav(d) {
   const tab = await getTab(d.tabId);
   dispatch({ kind: 'NAV', tabId: d.tabId, windowId: tab?.windowId ?? -1, url: d.url, incognito: Boolean(tab?.incognito), at: now() });
   const cfg = await loadConfig();
-  if (cfg && classify(d.url, cfg) === 'start') promptDesktop();
+  const cls = cfg && classify(d.url, cfg);
+  if (cls === 'start' || (cls === 'exam' && paperPrefixIsSpecific(cfg))) promptDesktop();
 }
 chrome.webNavigation.onCommitted.addListener(onNav);
 chrome.webNavigation.onHistoryStateUpdated.addListener(onNav);

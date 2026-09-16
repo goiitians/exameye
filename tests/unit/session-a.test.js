@@ -152,3 +152,25 @@ test('GAP and PERIODIC emit their events', () => {
     { lastSeenAt: T0, gapMs: 100000, reason: 'sw-restart' });
   assert.deepEqual(names(reduce(arm().session, { kind: 'PERIODIC', at: T0 }, cfg)), ['PERIODIC']);
 });
+
+const paperCfg = { ...cfg, examPrefix: 'https://e.x/paper/' };
+
+test('IDLE + paper-page NAV arms with trigger exam-nav when the paper prefix names paper pages specifically', () => {
+  const r = reduce(initial(), nav(41, 'https://e.x/paper/q1'), paperCfg);
+  assert.equal(r.session.state, 'ARMED');
+  assert.equal(r.session.examUrl, 'https://e.x/paper/q1');
+  assert.deepEqual(names(r), ['SESSION_ARMED']);
+  assert.deepEqual(r.events[0].data, { url: 'https://e.x/paper/q1', trigger: 'exam-nav' });
+});
+
+test('IDLE + paper-page NAV still arms while startButton is set (the button route was missed)', () => {
+  const r = reduce(initial(), nav(41, 'https://e.x/paper/q1'), { ...paperCfg, startButton: 'Start' });
+  assert.equal(r.session.state, 'ARMED');
+  assert.equal(r.events[0].data.trigger, 'exam-nav');
+});
+
+test('IDLE + same-site NAV does not arm when the paper prefix is the whole site', () => {
+  const r = reduce(initial(), nav(41, 'https://e.x/anything'), cfg);
+  assert.equal(r.session.state, 'IDLE');
+  assert.deepEqual(r.events, []);
+});

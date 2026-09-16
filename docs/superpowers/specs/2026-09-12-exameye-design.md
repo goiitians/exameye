@@ -202,6 +202,7 @@ the ids; the CS names that drive the state machine are `START_CLICK{label}`, `EN
 |---|---|---|---|---|
 | IDLE | NAV | `startButton` blank, `classify(url)==='start'` | `SESSION_ARMED{url,trigger:'nav'}` | ARMED; `id = sessionId(at, seat)`, examTabId/WindowId = input; effects `ABANDON_ALARM_CLEAR`, `MAX_ALARM_SET{when:maxAt}` when `maxMin>0` |
 | IDLE | CS START_CLICK | `startButton` set, `classify(url)==='start'` | `SESSION_ARMED{url,trigger:'button',label}` | ARMED, same as above |
+| IDLE | NAV | `classify(url)==='exam'` and `examPrefix` is narrower than the start-page origin (`paperPrefixIsSpecific`) | `SESSION_ARMED{url,trigger:'exam-nav'}` | ARMED, same as above; covers a missed start page and an extension reload mid-paper, with or without `startButton`. With a blank paper prefix (whole site) a paper-page NAV never arms: it would arm on the login page |
 | IDLE | anything else | — | none | IDLE (a start-prefix NAV does **not** arm while `startButton` is set) |
 | ARMED | NAV | tab is exam tab, class `result` | `RESULT_PAGE{url}` | **tail start** (below) with `outcome:'RESULT'`, `trigger:'result'`, `triggerLabel:url` |
 | ARMED | NAV | tab is exam tab, class ≠ `result`, url ≠ examUrl, class ≠ null | `EXAM_NAV{url}` | ARMED, examUrl updated |

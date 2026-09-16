@@ -1,4 +1,4 @@
-import { classify } from './urlmatch.js';
+import { classify, paperPrefixIsSpecific } from './urlmatch.js';
 import { sessionId } from './ids.js';
 import { makeEvent } from './events.js';
 
@@ -24,6 +24,8 @@ export function reduce(session, input, cfg) {
       arm(s, input, cfg, emit, out, { trigger: 'nav' });
     } else if (input.kind === 'CS' && input.name === 'START_CLICK' && cfg.startButton && classify(input.url, cfg) === 'start') {
       arm(s, input, cfg, emit, out, { trigger: 'button', label: input.data.label });
+    } else if (input.kind === 'NAV' && classify(input.url, cfg) === 'exam' && paperPrefixIsSpecific(cfg)) {
+      arm(s, input, cfg, emit, out, { trigger: 'exam-nav' });
     }
     return out;
   }
