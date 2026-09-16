@@ -720,6 +720,10 @@ fragment and appends `*` to the path (`https://exam.example.com/start?x=1` →
 | `closing` | `when: closingUntil` (one-shot; re-created on `END_CLICK` in CLOSING; cleared at disarm) | `CLOSING_TIMER` |
 | `desktopAsk` | `when: desktop.at + desktopRepromptMin*60000` (one-shot; set on decline/failure when `desktopRepromptMin>0`; cleared when the stream starts and at session end) | `promptDesktop` while ARMED/CLOSING and `meta.desktop.state` is `declined`/`error` (§6a) |
 
+`tick` also doubles as the boot marker: `ensureBoot()` runs at every SW start (module top level, not
+just `onInstalled`/`onStartup`) and treats a missing `tick` alarm as an enabled lifetime that never
+booted, running full `boot()` in that case.
+
 ## 11. Chrome vs Edge differences
 
 | Topic | Chrome | Edge (Chromium) |

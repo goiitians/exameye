@@ -9,7 +9,7 @@ Two routes; pick one per centre.
 - Copy the ExamEye folder (the one containing `manifest.json`) somewhere it will not be moved or deleted, e.g. `C:\ExamEye` or `/opt/exameye`. Chrome loads it from that path on every start; moving it disables the extension.
 - Chrome: `chrome://extensions` -> Developer mode ON -> Load unpacked -> select the folder.
 - Edge: `edge://extensions` -> Developer mode ON -> Load unpacked -> select the folder.
-- Chrome shows a "Disable developer mode extensions" bubble on each start; dismissing it is harmless, and it never disables ExamEye. It does not appear when Developer mode is left ON.
+- Chrome shows a "Disable developer mode extensions" bubble on each start. Click Cancel or close it: its Disable button switches off every unpacked extension, ExamEye included, and a candidate can click it too. The bubble does not appear when Developer mode is left ON, and the store or policy route has no bubble at all.
 - The extension id differs per machine on this route (it is derived from the folder path), so it cannot be used with the policies below.
 
 **Store listing (required for managed fleets)**
@@ -73,6 +73,7 @@ On a throw-away candidate account walk every in-paper screen and confirm the con
 - Nothing prevents a candidate from disabling the extension. A re-enable shows up as EXTENSION_GAP; a session with missing files is itself evidence.
 - ExamEye records "focus left Chrome"; when Desktop capture is `off` it takes no desktop screenshots. It never names other applications, even when Desktop capture is `on`.
 - The Options page is reachable by anyone at the machine. Every saved change during a paper is logged as `CONFIG_CHANGED` with the field names and a screenshot, and the session's output folder is fixed when the paper starts, so a changed subfolder cannot split or hide a session in progress. On managed machines lock the page with the `ExtensionSettings` policy.
+- If ExamEye is disabled and enabled again, it re-creates its timers on its next start; the gap shows as `EXTENSION_GAP` on the next event.
 
 ## 8. Candidate notice
 Display or read out before the paper: "Your screen is recorded during this paper. Chrome will ask you to share your screen when the exam page opens: click the screen preview, then Share. Do not close the small ExamEye window or press Stop sharing." Cancel and Stop sharing are logged and re-asked.

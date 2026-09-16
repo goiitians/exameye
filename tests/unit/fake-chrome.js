@@ -37,7 +37,7 @@ export function installFakeChrome() {
       },
       onChanged: evt(),
     },
-    alarms: { alarms: {}, async create(name, info) { c.alarms.alarms[name] = info; }, async clear(name) { delete c.alarms.alarms[name]; return true; }, onAlarm: evt() },
+    alarms: { alarms: {}, async create(name, info) { c.alarms.alarms[name] = info; }, async clear(name) { delete c.alarms.alarms[name]; return true; }, async get(name) { const a = c.alarms.alarms[name]; return a ? { name, ...a } : undefined; }, onAlarm: evt() },
     tabs: {
       list: [],
       async query(q = {}) { return c.tabs.list.filter(t => (q.active === undefined || Boolean(t.active) === q.active) && (q.windowId === undefined || t.windowId === q.windowId)); },

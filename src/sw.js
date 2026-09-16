@@ -445,7 +445,15 @@ async function boot() {
   await chrome.idle.setDetectionInterval(60);
 }
 
+// Enabling a disabled extension fires neither onInstalled nor onStartup; a missing tick alarm is
+// the signature of an enabled lifetime that never booted.
+async function ensureBoot() {
+  if (await alarms.get('tick')) { await suppressUi(); return; }
+  await boot();
+}
+
 eraseOwnCompleted();
+ensureBoot();
 chrome.runtime.onInstalled.addListener(boot);
 chrome.runtime.onStartup.addListener(() => { recover(); return boot(); });
 chrome.storage.onChanged.addListener((changes) => {
