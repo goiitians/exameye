@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { LABEL_VECTORS } from '../../src/core/labels.js';
 
@@ -26,11 +26,18 @@ class FakeObserver {
   trigger() { this.cb(); }
 }
 globalThis.MutationObserver = FakeObserver;
+// content.js arms its 1 s debounce as soon as the stored config resolves; fire it under a mock so no real timer
+// and no pending timer id (the module keeps it in a closure) survive into the tests' own mock instances
+mock.timers.enable({ apis: ['setTimeout'] });
 await import('../../src/content.js');
+await new Promise((r) => setImmediate(r));
+mock.timers.tick(1000);
+mock.timers.reset();
 const last = () => sent.at(-1);
 const setConfig = (cfg) => L['storage']({ config: { newValue: cfg } }, 'local');
 
-test('normaliser matches core/labels on the shared vectors', () => {
+test('normaliser matches core/labels on the shared vectors', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
   for (const [raw, expected] of LABEL_VECTORS) {
     if (!expected) continue;
     setConfig({ endButton: expected });
@@ -40,6 +47,7 @@ test('normaliser matches core/labels on the shared vectors', () => {
     assert.deepEqual(last(), { type: 'cs', name: 'END_CLICK', data: { label: expected } });
   }
   setConfig({ startButton: 'Start', endButton: 'Finish, Confirm submission', endMarker: 'Your answers have been submitted' });
+  t.mock.timers.tick(1000);
 });
 
 test('click on a matching start button sends START_CLICK; end button sends END_CLICK; others send nothing', () => {
@@ -126,9 +134,17 @@ test('clipboard events report lengths only', () => {
   assert.deepEqual(last(), { type: 'cs', name: 'PASTE', data: { len: 11 } });
 });
 
-test('dragstart reports selection length and the dragged element tag', () => {
+test('a drag that ends without an in-page drop reports DRAG; a drag dropped in the page does not', () => {
+  const n = sent.length;
   L['doc:dragstart']({ target: { tagName: 'P' } });
+  assert.equal(sent.length, n, 'nothing is sent at dragstart');
+  L['doc:dragend']({});
   assert.deepEqual(last(), { type: 'cs', name: 'DRAG', data: { len: 3, tag: 'P' } });
+  const m = sent.length;
+  L['doc:dragstart']({ target: { tagName: 'IMG' } });
+  L['doc:drop']({});
+  L['doc:dragend']({});
+  assert.equal(sent.length, m, 'an in-page drop is not a DRAG');
 });
 
 test('contextmenu, print, visibility, blur, focus', () => {

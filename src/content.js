@@ -12,7 +12,11 @@
   document.addEventListener('cut', clip('CUT'), true);
   document.addEventListener('paste', clip('PASTE'), true);
   document.addEventListener('contextmenu', (e) => send('CONTEXTMENU', { tag: e.target?.tagName || '' }), true);
-  document.addEventListener('dragstart', (e) => send('DRAG', { len: String(getSelection() || '').length, tag: e.target?.tagName || '' }), true);
+  // drop fires on an in-page target before the source's dragend; a drag that leaves the page (or is cancelled) ends without one
+  let drag = null;
+  document.addEventListener('dragstart', (e) => { drag = { len: String(getSelection() || '').length, tag: e.target?.tagName || '' }; }, true);
+  document.addEventListener('drop', () => { drag = null; }, true);
+  document.addEventListener('dragend', () => { if (drag) send('DRAG', drag); drag = null; }, true);
   window.addEventListener('beforeprint', () => send('PRINT', {}));
   let wasFullscreen = false;
   document.addEventListener('fullscreenchange', () => {

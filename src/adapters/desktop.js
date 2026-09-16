@@ -25,3 +25,10 @@ export async function grabDesktop(tabId) {
 
 export const setAway = (tabId, on) => send(tabId, 'away', { on });
 export const askHolder = (tabId) => send(tabId, 'ask');
+
+// ids persisted before a browser restart can name any window: act only on a window that still shows the holder page
+export async function isHolderWindow(windowId, tabId) {
+  if (windowId == null) return false;
+  const tabs = await chrome.tabs.query({ windowId }).catch(() => []);
+  return tabs.some(t => t.url === holderUrl() && (tabId == null || t.id === tabId));
+}

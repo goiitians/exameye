@@ -153,3 +153,16 @@ test('showWindow restores and focuses; minimizeWindow minimises; closeWindow rem
   assert.equal(chrome.windows.list.find(w => w.id === win.windowId), undefined);
   await assert.doesNotReject(() => desktop.closeWindow(999999));
 });
+
+test('isHolderWindow is true only for a window whose tab is the holder page', async () => {
+  chrome.tabs.list = [
+    { id: 9, windowId: 100, url: chrome.runtime.getURL('src/holder/holder.html'), active: true },
+    { id: 1, windowId: 3, url: 'https://e.x/start', active: true },
+  ];
+  assert.equal(await desktop.isHolderWindow(100, 9), true);
+  assert.equal(await desktop.isHolderWindow(100, null), true);
+  assert.equal(await desktop.isHolderWindow(100, 8), false);
+  assert.equal(await desktop.isHolderWindow(3, 1), false);
+  assert.equal(await desktop.isHolderWindow(999, 9), false);
+  assert.equal(await desktop.isHolderWindow(null, null), false);
+});

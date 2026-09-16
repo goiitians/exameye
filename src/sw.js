@@ -13,7 +13,7 @@ import { EMPTY_TAIL, decide } from './core/tailshots.js';
 import { shotFile, desktopShotFile } from './core/ids.js';
 import { classify } from './core/urlmatch.js';
 import { EMPTY_DESKTOP, shouldPrompt, onHolder } from './core/desktop.js';
-import { supported, holderUrl, openHolder, showWindow, minimizeWindow, closeWindow, grabDesktop, setAway, askHolder } from './adapters/desktop.js';
+import { supported, holderUrl, openHolder, showWindow, minimizeWindow, closeWindow, grabDesktop, setAway, askHolder, isHolderWindow } from './adapters/desktop.js';
 import { suppressUi, writeFile, eraseOwnCompleted } from './adapters/downloads.js';
 import { putText, putBase64, remove, dataUrl, toBase64 } from './core/sink.js';
 import { tally } from './core/counters.js';
@@ -97,16 +97,13 @@ async function dispatchNow(input) {
   }
   const r = reduce(session, input, cfg);
   newEvents.push(...r.events);
-  if (r.session.state === 'ARMED' && session.state === 'IDLE') {
+  const armed = r.session.state === 'ARMED' && session.state === 'IDLE';
+  const closing = r.session.state === 'CLOSING' && session.state === 'ARMED';
+  if (armed) {
     const h = headerLine(r.session);
     events = []; lines = [h]; lastHash = await shortHash(h);
-    await store.set({ shots: {} });
-    await store.patchMeta({ lastShot: null, lastError: null });
   }
-  if (r.session.state === 'CLOSING' && session.state === 'ARMED') {
-    await store.patchMeta({ tail: EMPTY_TAIL });
-  }
-  const added = await takeShots(newEvents, input.pre);
+  const { added, shots, last } = await takeShots(newEvents, input.pre, armed);
   if (meta.desktop?.state === 'on') {
     for (const ev of newEvents) {
       if (ev.name === 'FOCUS_LEFT_CHROME') { await store.patchMeta({ desktopAway: EMPTY_TAIL }); await setAway(meta.desktop.holderTabId, true); }
@@ -120,6 +117,7 @@ async function dispatchNow(input) {
     events.push(ev);
   }
   const batch = { session: r.session, events, lines, lastHash };
+  if (armed || added.length) batch.shots = shots;
   if (newEvents.length) {
     const sess = r.session.state !== 'IDLE' ? r.session : session;
     const base = `${sess.subfolder ?? cfg.subfolder}/${sess.id}`;
@@ -132,8 +130,11 @@ async function dispatchNow(input) {
   let pendingEnd;
   const { meta: currentMeta = {} } = await store.get('meta');
   batch.meta = { ...currentMeta, lastSeenAt: input.at };
+  if (armed) Object.assign(batch.meta, { lastShot: null, lastError: null });
+  if (closing) batch.meta.tail = EMPTY_TAIL;
+  if (last) batch.meta.lastShot = last;
   if (endEffect) {
-    const { shots: endShots = {} } = await store.get('shots');
+    const endShots = batch.shots ?? (await store.get('shots')).shots ?? {};
     pendingEnd = { outcome: endEffect.outcome, session: endEffect.session, events: [...events], lines: [...lines], shots: endShots };
     // events/lines/shots are cleared here, atomically with the pendingEnd snapshot that now
     // holds them: leaving the live clear for endSession's own (later, possibly much later)
@@ -144,7 +145,7 @@ async function dispatchNow(input) {
   if (newEvents.length || endEffect) await paintBadge(r.session, endEffect ? [] : events);
   await runEffects(r.effects, cfg, pendingEnd);
   if (newEvents.length) await flushNow();
-  if (r.session.state === 'ARMED' && session.state === 'IDLE') {
+  if (armed) {
     const { meta: m2 = {} } = await store.get('meta');
     const d = m2.desktop || EMPTY_DESKTOP;
     await store.patchMeta({ desktop: { ...d, asks: 0 } });
@@ -166,17 +167,19 @@ async function runEffects(effects, cfg, pendingEnd) {
   }
 }
 
-async function takeShots(events, pre) {
+async function takeShots(events, pre, fresh) {
   const { meta = {} } = await store.get('meta');
   const desktopOn = meta.desktop?.state === 'on';
   const wantDesktop = events.some(e => e.name === 'DESKTOP_FRAME' || (needsDesktopFrame(e) && desktopOn));
-  if (!events.some(needsShot) && !wantDesktop) return [];
-  const { shots = {} } = await store.get('shots');
-  let last = meta.lastShot || { at: 0, file: null };
+  if (!events.some(needsShot) && !wantDesktop) return { added: [], shots: fresh ? {} : null, last: null };
+  const shots = fresh ? {} : ((await store.get('shots')).shots || {});
+  let last = (fresh ? null : meta.lastShot) || { at: 0, file: null };
   const added = [];
+  // a clock set back can reproduce an earlier stamp; the earlier JPEG must not be overwritten
+  const unique = (file) => { let f = file, n = 2; while (f in shots) f = file.replace(/\.jpg$/, `-${n++}.jpg`); return f; };
   for (const ev of events) {
     if (ev.name === 'DESKTOP_FRAME') {
-      const file = desktopShotFile(ev.t, ev.name);
+      const file = unique(desktopShotFile(ev.t, ev.name));
       shots[file] = pre.desktop;
       added.push({ file, b64: pre.desktop });
       ev.shot = file;
@@ -185,7 +188,7 @@ async function takeShots(events, pre) {
     if (needsDesktopFrame(ev) && desktopOn) {
       const { b64, alive } = await grabDesktop(meta.desktop?.holderTabId);
       if (b64) {
-        const file = desktopShotFile(ev.t, ev.name);
+        const file = unique(desktopShotFile(ev.t, ev.name));
         shots[file] = b64;
         added.push({ file, b64 });
         ev.data.desktopShot = file;
@@ -195,19 +198,20 @@ async function takeShots(events, pre) {
     }
     if (!needsShot(ev)) continue;
     if (ev.name === 'SCREEN_CHANGED') {
-      const file = shotFile(ev.t, ev.name);
+      const file = unique(shotFile(ev.t, ev.name));
       shots[file] = pre.b64;
       added.push({ file, b64: pre.b64 });
       ev.shot = file;
       last = { at: ev.t, file };
       continue;
     }
-    if (last.file && ev.t - last.at < SHOT_GAP_MS) { ev.shot = last.file; continue; }
+    // a negative delta means the clock was set back: the previous shot is not "2 s old", capture again
+    if (last.file && ev.t >= last.at && ev.t - last.at < SHOT_GAP_MS) { ev.shot = last.file; continue; }
     try {
       if (NAV_BORN.has(ev.name)) await awaitLoaded(ev.tabId, PAINT_WAIT_MS);
       const windowId = ev.windowId >= 0 ? ev.windowId : await lastFocusedWindowId();
       const b64 = await captureJpeg(windowId);
-      const file = shotFile(ev.t, ev.name);
+      const file = unique(shotFile(ev.t, ev.name));
       shots[file] = b64;
       added.push({ file, b64 });
       ev.shot = file;
@@ -216,8 +220,7 @@ async function takeShots(events, pre) {
       ev.data.shotError = String(e?.message || e);
     }
   }
-  if (added.length) { await store.set({ shots }); await store.patchMeta({ lastShot: last }); }
-  return added;
+  return { added, shots, last: added.length ? last : null };
 }
 
 async function flushNow() {
@@ -266,7 +269,7 @@ async function promptDesktopNow() {
 async function askNow(d, cfg) {
   if (cfg.desktopCapture !== 'on') return;
   let { holderWindowId: id, holderTabId: tabId } = d;
-  if (id !== null && (await getWindow(id))) {
+  if (tabId != null && (await isHolderWindow(id, tabId))) {
     await showWindow(id);
     await askHolder(tabId);
   } else {
@@ -293,7 +296,8 @@ async function applyHolder(d, msg, cfg) {
 async function desktopMessageNow(msg, sender, respond) {
   const { meta = {} } = await store.get('meta');
   const d = meta.desktop || EMPTY_DESKTOP;
-  const fromHolder = d.holderTabId !== null && sender.tab?.id === d.holderTabId;
+  // the holder is a (window, tab) pair: ids persisted before a browser restart can each collide with a live one
+  const fromHolder = d.holderTabId !== null && sender.tab?.id === d.holderTabId && sender.tab?.windowId === d.holderWindowId;
   if (msg.name === 'ready') { respond(fromHolder ? { ask: d.state === 'prompting' } : { close: true }); return; }
   if (!fromHolder) { respond({}); return; }
   if (msg.name === 'frame') await desktopFrameNow(msg.b64);
@@ -340,9 +344,11 @@ async function closeHolderNow() {
   const { meta = {} } = await store.get('meta');
   const d = meta.desktop || EMPTY_DESKTOP;
   if (d.state === 'off' && d.holderWindowId === null) return;
+  // the tombstone keeps the id so the holder's own WINDOW_REMOVED (possibly already queued) is dropped by the HOLDER_KINDS gate
+  const alive = await isHolderWindow(d.holderWindowId, d.holderTabId);
   await store.patchMeta({ desktop: { ...EMPTY_DESKTOP, holderWindowId: d.holderWindowId } });
   await alarms.clear('desktopAsk');
-  if (d.holderWindowId !== null) await closeWindow(d.holderWindowId);
+  if (alive) await closeWindow(d.holderWindowId);
 }
 
 async function desktopAskNow() {
@@ -459,8 +465,10 @@ async function boot() {
 async function ensureBoot() {
   if (await alarms.get('tick')) await suppressUi();
   else await boot();
-  const { session, events = [] } = await store.get(['session', 'events']);
-  await paintBadge(session, events);
+  await enqueue(async () => {
+    const { session, events = [] } = await store.get(['session', 'events']);
+    await paintBadge(session, events);
+  });
 }
 
 eraseOwnCompleted();

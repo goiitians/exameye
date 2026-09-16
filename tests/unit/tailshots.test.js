@@ -48,3 +48,10 @@ test('decide(undefined, ...) treats undefined as EMPTY_TAIL', () => {
   assert.equal(r.keep, true);
   assert.deepEqual(r.tail, { count: 1, lastHash: 'a', lastAt: 1000 });
 });
+
+test('a capture timestamped before the previous one (clock set back) is kept', () => {
+  const after = decide(EMPTY_TAIL, { hash: 'a', at: 100000 }).tail;
+  const r = decide(after, { hash: 'b', at: 40000 });
+  assert.equal(r.keep, true);
+  assert.deepEqual(r.tail, { count: 2, lastHash: 'b', lastAt: 40000 });
+});

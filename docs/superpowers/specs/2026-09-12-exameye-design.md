@@ -352,7 +352,7 @@ Field `data` per event; every event also has `seq`, `ts` (ISO 8601 UTC), `t` (ep
 | COPY / CUT / PASTE | CS clipboard events | len (selection or pasted text length; content never recorded) | yes |
 | CONTEXTMENU | CS contextmenu | tag (target element tag) | yes |
 | PRINT | CS beforeprint | — | yes |
-| DRAG | CS dragstart | len (selection length), tag | yes |
+| DRAG | CS dragend with no in-page drop (dragged out of the page, or cancelled) | len (selection length), tag | yes |
 | DEVTOOLS_OPENED | CS resize heuristic (outer−inner ≥ 160 px) | dw, dh | yes |
 | IDLE_START | chrome.idle.onStateChanged | state (`idle`/`locked`) | no |
 | IDLE_END | chrome.idle.onStateChanged | idleMs | no |
@@ -425,7 +425,7 @@ alarm (`windows.getAll`) reconciles anything missed (e.g. restored while the SW 
   (`shotIntervalMin`, default 10 → ~18 periodic + ~35 event shots ≈ 55 per paper).
 - **Coalescing:** Chrome limits `captureVisibleTab` to 2 calls/s. The SW keeps
   `meta.lastShot = {at, file}`; if `now − at < 2000` the event reuses `lastShot.file` instead of
-  capturing. This also guarantees unique file names (one per second at most).
+  capturing. This also guarantees unique file names (one per second at most). A clock set back (§14 item 16) breaks both assumptions, so a negative `now − at` captures afresh and a name already present in `shots` gets a `-2`, `-3`… suffix before `.jpg`; `tailshots.decide` treats a negative gap as elapsed for the same reason. `shots` and `meta.lastShot` are written in the same batched `storage.set` as the event (§7), never ahead of it.
 - File name: `screenshots/<YYYYMMDD-HHMMSS>_<EVENT>.jpg` (`ids.shotFile`), local time.
 - Failure (chrome:// pages, minimised window, throttling): `event.shot=null`,
   `event.data.shotError=<message>`; the event is still recorded.
@@ -478,7 +478,8 @@ current stream, open the dialog again), `grab` → `{b64, alive}`, `away{on}`
 (start/stop posting `frame` every 10 s). All holder → SW messages are handled in one queue step.
 SW → holder messages are sent with `chrome.tabs.sendMessage(meta.desktop.holderTabId, …)`, never
 broadcast; holder → SW messages other than `ready` are accepted only when `sender.tab.id ===
-meta.desktop.holderTabId`, and `ready` from any other tab is answered `{close:true}`.
+meta.desktop.holderTabId` and `sender.tab.windowId === meta.desktop.holderWindowId` (both ids can
+collide with a live one after a browser restart), and `ready` from any other tab is answered `{close:true}`.
 
 **State** (`meta.desktop`; pure transitions in `core/desktop.js`):
 `{ state, at, since, holderWindowId, holderTabId, asks, width, height, error, nextAskAt, screens }`
@@ -536,7 +537,7 @@ timer) · `stopped at HH:MM:SS` · `error: <message>` · `off`.
 **Persistence and restart.** `meta.desktop` and `meta.desktopAway` live in storage.local, so an SW
 restart changes nothing (the holder page keeps the stream). A browser restart loses the stream
 and the holder: `recover()` resets `meta.desktop` to `off` (window ids are not stable across
-restarts, so the old id is dropped, never closed) and, for an ARMED/CLOSING session, prompts once
+restarts, so the old id is dropped, never closed); before any window action (`closeHolderNow`, `askNow`) the SW checks that `holderWindowId` still hosts a tab at the holder URL with id `holderTabId` (`adapters/desktop.isHolderWindow`), so a step that runs ahead of `recover()` cannot close, show or minimise a foreign window. A `desktopAsk`/`tick` alarm delivered before `onStartup` can still open a holder that `recover()` then replaces; the orphan is told `{close:true}` on its `ready` and, for an ARMED/CLOSING session, prompts once
 immediately; later re-asks follow the decline timer. A holder page Chrome restored on its own
 reports `ready` with an unknown window id and is told `{close:true}`.
 
@@ -869,7 +870,9 @@ recovery beyond re-injection on reload.
 16. **System clock.** All times are wall-clock; a clock set back is logged as `CLOCK_BACKWARDS`, a
     clock set forward is indistinguishable from a recording gap and appears as `EXTENSION_GAP`.
     Absolute alarms (`max`, `abandon`, `closing`, `desktopAsk`) fire early or late by the same
-    amount.
+    amount. After a set-back, screenshot coalescing and tail dedupe treat the negative gap as
+    elapsed and file names are disambiguated (§3); `durations` in `counters.js` can still come out
+    negative between an event pair that straddles the step.
 17. **Multiple screens.** The share dialog captures the one screen the candidate picks;
     `screen.isExtended` only says whether more than one exists, so the summary reads
     `2+ screens`.

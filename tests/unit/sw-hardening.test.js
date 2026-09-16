@@ -63,3 +63,36 @@ test('one dispatch writes pending, session, events, lines, lastHash and meta in 
   assert.equal((await get('meta')).meta.lastSeenAt, 301000);
   await sw.dispatch({ kind: 'NAV', tabId: 1, windowId: 3, url: 'https://e.x/result', at: 302000 });
 });
+
+test('after a clock rollback shots are captured afresh and a colliding name is disambiguated', async () => {
+  await sw.dispatch({ kind: 'NAV', tabId: 1, windowId: 3, url: 'https://e.x/start', at: 400000 });
+  await sw.dispatch({ kind: 'PERIODIC', at: 460000 });
+  const first = (await events()).at(-1);
+  assert.match(first.shot, /_PERIODIC\.jpg$/);
+  await sw.dispatch({ kind: 'PERIODIC', at: 400000 });
+  let evs = await events();
+  assert.deepEqual(evs.slice(-2).map(e => e.name), ['CLOCK_BACKWARDS', 'PERIODIC']);
+  assert.notEqual(evs.at(-1).shot, first.shot, 'a rolled-back event must not reuse the pre-rollback screenshot');
+  assert.match(evs.at(-1).shot, /_PERIODIC\.jpg$/);
+  await sw.dispatch({ kind: 'PERIODIC', at: 460000 });
+  evs = await events();
+  assert.equal(evs.at(-1).shot, first.shot.replace(/\.jpg$/, '-2.jpg'));
+  const { shots } = await get('shots');
+  assert.ok(shots[first.shot] && shots[evs.at(-1).shot], 'both JPEGs must survive');
+  await sw.dispatch({ kind: 'NAV', tabId: 1, windowId: 3, url: 'https://e.x/result', at: 461000 });
+});
+
+test('a screenshot dispatch writes shots and meta.lastShot in the same storage call as the event', async () => {
+  await sw.dispatch({ kind: 'NAV', tabId: 1, windowId: 3, url: 'https://e.x/start', at: 500000 });
+  const realSet = chrome.storage.local.set.bind(chrome.storage.local);
+  const calls = [];
+  chrome.storage.local.set = async (obj) => { calls.push(obj); return realSet(obj); };
+  try { await sw.dispatch({ kind: 'PERIODIC', at: 510000 }); } finally { chrome.storage.local.set = realSet; }
+  const ev = (await events()).at(-1);
+  const batch = calls.find(o => o.events && o.shots && o.meta);
+  assert.ok(batch, JSON.stringify(calls.map(o => Object.keys(o))));
+  assert.ok(batch.shots[ev.shot]);
+  assert.equal(batch.meta.lastShot.file, ev.shot);
+  assert.equal(calls.findIndex(o => o.shots), calls.indexOf(batch), 'shots must not be written before the batch');
+  await sw.dispatch({ kind: 'NAV', tabId: 1, windowId: 3, url: 'https://e.x/result', at: 511000 });
+});
