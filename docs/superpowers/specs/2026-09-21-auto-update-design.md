@@ -55,11 +55,15 @@ share a centre's address):
 Two scripts with identical logic, shipped at the installer root and copied by the installer to
 `<home>/ExamEye-updater/` (outside the extension folder, so the swap never touches them):
 
-- Windows: `Update-ExamEye.ps1`, run by a per-user Scheduled Task `ExamEye Update`
-  (triggers: at logon, and every hour; action: `powershell -NoProfile -ExecutionPolicy Bypass
-  -WindowStyle Hidden -File <home>\ExamEye-updater\Update-ExamEye.ps1`). Registered with
-  `Register-ScheduledTask` for the current user, no elevation, `MultipleInstances IgnoreNew` and
-  `StartWhenAvailable` so an hourly run never overlaps a logon run.
+- Windows: `Update-ExamEye.cmd`, plain batch using the `curl.exe` and `tar.exe` that Windows 10
+  1803+ ships. Not PowerShell: a Group Policy execution policy blocks every `.ps1` file on managed
+  PCs and `-ExecutionPolicy Bypass` cannot override it (seen 2026-09-21: "running scripts is disabled
+  on this system"). Launched through `Update-ExamEye.vbs` (`WScript.Shell.Run ..., 0`) so no console
+  window appears during an exam. Hourly: `schtasks /Create /SC HOURLY /MO 1 /TN "ExamEye Update" /TR
+  "wscript.exe //B //Nologo <home>\ExamEye-updater\Update-ExamEye.vbs"`, per user, no elevation. At
+  logon: a copy of the launcher in `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\`.
+  Chrome/Edge detection with `tasklist`; the log timestamp comes from a PowerShell `-Command` (allowed
+  under an execution policy, which governs script files only) with `%DATE% %TIME%` as the fallback.
 - macOS: `update-exameye.sh`, run by a launchd agent `~/Library/LaunchAgents/in.exameye.update.plist`
   (`RunAtLoad` true, `StartInterval` 3600, stdout/stderr to the log below). Loaded with
   `launchctl bootstrap gui/$UID` (falls back to `launchctl load`).
@@ -70,9 +74,10 @@ Logic, in order; every exit writes one line to `<home>/ExamEye-updater/update.lo
 1. `installed` = `version` from `<home>/ExamEye/manifest.json`. Missing → `failed: not installed`.
 2. `latest` = body of `version.txt` from the base URL (default the GitHub URL above; a parameter
    `-BaseUrl` / env `EXAMEYE_UPDATE_URL` overrides it for tests). Unreachable → `failed: <reason>`.
-   Unreadable → `failed: cannot read version.txt`; blank → `failed: empty version.txt`. Windows
-   downloads it to a file: PowerShell 5.1 leaves `.Content` empty for `application/octet-stream`.
-3. Compare numerically per dot-separated field. Not newer → `up to date <installed>`.
+   Unreadable → `failed: cannot read version.txt`; blank → `failed: empty version.txt`.
+3. macOS compares numerically per dot-separated field; not newer → `up to date <installed>`. Windows
+   compares for equality only (`latest` is by definition the release to run, and batch has no numeric
+   compare worth trusting); equal → `up to date <installed>`.
 4. Chrome running (`chrome` or `msedge` process on Windows; `Google Chrome` or `Microsoft Edge` on
    macOS) → `skipped <latest>: chrome running`. The next hourly run retries.
 5. Download the zip to a fresh temp folder, extract, and require `ExamEye/manifest.json` inside with
@@ -99,7 +104,8 @@ does not reseed `defaults.json` (that happens only on `install`).
   updater script to `<home>/ExamEye-updater/` and register the task / agent. Both steps are
   idempotent (re-registering replaces). The final on-screen text mentions that updates are
   automatic from now on.
-- `tools/build-installer.mjs`: also copies the two updater scripts (CRLF for the `.ps1`), and takes
+- `tools/build-installer.mjs`: also copies the updaters (`Update-ExamEye.cmd` and `.vbs` with CRLF,
+  `update-exameye.sh` with mode 755), and takes
   the output directory from `EXAMEYE_DIST` when set (default `dist/exameye-installer`) so a test can
   build into a temp folder.
 - `installer/READ-ME-FIRST.txt`: a "Install from GitHub" section (Releases page → download
@@ -121,9 +127,9 @@ does not reseed `defaults.json` (that happens only on `install`).
   failure (disk full, antivirus lock) logs `failed: mirror` and leaves the live folder untouched; the
   next hourly run starts over from a fresh download.
 - GitHub unreachable: the PC keeps its version; the log shows why.
-- Rollback: re-run any older `exameye-installer.zip` by hand. The updater only moves forward
-  (numeric compare), so the next hourly run does not undo a deliberate downgrade until a newer
-  release is published.
+- Rollback: publish the older build as a new release (Run workflow on the older commit); the machines
+  follow the latest release. A hand-installed older zip is re-updated on Windows at the next run
+  (equality compare) and kept on macOS until a newer release exists (numeric compare).
 - Procedural rule: do not run the Release workflow during exam hours. Everything published reaches
   PCs at their next Chrome start.
 - The updater has no secrets and no elevation; a compromised release is the same risk as a
@@ -137,7 +143,7 @@ does not reseed `defaults.json` (that happens only on `install`).
 - macOS script: a scratch run on this Mac against a local static server serving `version.txt` and a
   zip built from the repo, with `EXAMEYE_UPDATE_URL` pointing at it and Chrome closed; then the same
   with Chrome open (expects `skipped`). Recorded in the progress note, not automated.
-- Windows script: cannot run here. Kept to the seven steps above with no clever PowerShell; verified
+- Windows script: cannot run here. Kept to the seven steps above in plain batch; verified
   on the owner's Windows PC at the first release: log shows `up to date`, then after a new release
   `skipped: chrome running` with Chrome open, then `updated` after Chrome is closed and the popup
   shows the new version.

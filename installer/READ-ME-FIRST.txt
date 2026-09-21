@@ -5,7 +5,8 @@ What is in this folder
   ExamEye\                  the extension (do not open or edit; the installer copies it)
   Install-ExamEye.cmd       Windows: double-click this
   Install-ExamEye.command   macOS: double-click this (or run it from Terminal, see below)
-  Update-ExamEye.ps1        Windows updater (the installer registers it; nothing to run by hand)
+  Update-ExamEye.cmd        Windows updater (the installer sets it up; nothing to run by hand)
+  Update-ExamEye.vbs        starts the Windows updater without a window (same)
   update-exameye.sh         macOS updater (same)
   ExamEye-guide.pdf         what ExamEye does and how to read its reports
   ExamEye-overview.pptx     the same as slides
@@ -29,8 +30,9 @@ Publish a new version (owner)
   GitHub > Actions > Release > Run workflow (branch main). Wait for the green tick; the release
   v0.1.<number> appears under Releases. Machines pick it up within an hour of their next Chrome
   restart. Do not publish during exam hours. To check the updater on one PC right away:
-  close Chrome, then run  powershell -NoProfile -ExecutionPolicy Bypass -File %USERPROFILE%\ExamEye-updater\Update-ExamEye.ps1
-  and read the last line of update.log.
+  close Chrome, then double-click %USERPROFILE%\ExamEye-updater\Update-ExamEye.cmd
+  and read the last line of %USERPROFILE%\ExamEye-updater\update.log.
+  Windows needs curl.exe and tar.exe, present since Windows 10 version 1803.
 
 Install on a Windows machine
   1. Double-click Install-ExamEye.cmd. It copies ExamEye to C:\Users\<you>\ExamEye,
