@@ -112,3 +112,17 @@ test('lightbox: every figure carries close, prev/next through the set and a coun
   assert.ok(!/<script/i.test(html));
   for (const b64 of Object.values(shots)) assert.equal(html.split(b64).length - 1, 1, 'each image embedded exactly once');
 });
+
+test('timeline says when a screenshot could not be taken instead of leaving the cell empty', () => {
+  const err = "The 'activeTab' permission is not in effect because this extension has not been in invoked.";
+  const evs = [
+    events[0],
+    { seq: 2, t: started + 5000, name: 'TAB_SWITCH', data: { toTabId: 5, toUrl: 'chrome://newtab/', toTitle: 'New tab', toWindowId: 3, incognito: false, shotError: err }, shot: null, tabId: 5, windowId: 3 },
+  ];
+  const html = renderSummaryHtml({ ...ctx, events: evs, tally: tally(evs), inlineShots: true });
+  const rows = html.match(/<tr class="">.*?<\/tr>/g);
+  assert.equal(rows.length, 2);
+  assert.ok(rows[0].includes('<td class="sh"><a href="#s1">tab</a></td>'));
+  assert.match(rows[1], /<td class="sh"><span class="noshot">not captured: Chrome does not let extensions capture this page \(chrome:\/\/ or another extension\)<\/span><\/td>/);
+  assert.ok(!html.includes('activeTab'), 'the raw Chrome message stays in the log, not the dashboard');
+});

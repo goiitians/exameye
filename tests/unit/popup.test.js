@@ -20,6 +20,11 @@ test('popup has the live-state slots and a module script', async () => {
 test('render: idle with nothing stored', async () => {
   await import('../../src/popup/popup.js');
   await tick();
+  assert.deepEqual(chrome.runtime.ports.map(p => p.name), ['popup'], 'the popup opens a port so the SW can tell its own UI has focus');
+  // a service-worker restart drops the port; the popup, still open, reconnects so the new SW sees it
+  await chrome.runtime.ports[0].disconnect();
+  await tick();
+  assert.equal(chrome.runtime.ports.length, 2);
   assert.equal(dom.state.textContent, 'IDLE');
   assert.equal(dom.session.textContent, '-');
   assert.equal(dom.flush.textContent, 'never');

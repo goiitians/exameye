@@ -1,4 +1,5 @@
 import { fmtDuration, fmtLocal, tzOffset } from './ids.js';
+import { describeShotError } from './events.js';
 
 const dots = (label, width) => (label + ' ').padEnd(width, '.');
 
@@ -66,6 +67,11 @@ export function renderSummaryText({ session, outcome, endedAt, events, tally, in
     '', 'Parallel pages (focused time, visits)');
   for (const p of tally.parallel) L.push(`  ${fmtDuration(p.focusedMs)}  ${p.visits}  ${p.url}  ${JSON.stringify(p.title)}${p.incognito ? '  [incognito]' : ''}`);
   L.push('', `Screenshots: ${shots} (screenshots/)`);
+  const missed = events.filter(e => e.data?.shotError);
+  if (missed.length) {
+    L.push(`Not captured: ${missed.length}`);
+    for (const e of missed) L.push('  ' + [fmtLocal(e.t).slice(11), e.name, e.data.toUrl ?? e.data.url, describeShotError(e.data.shotError)].filter(Boolean).join('  '));
+  }
   if (tally.desktop.frames > 0) L.push(`Desktop frames: ${tally.desktop.frames} (screenshots/desktop/)`);
   L.push('');
   return L.join('\n');

@@ -111,8 +111,9 @@ const HANDLERS = {
       emit('RESULT_PAGE', { url: input.url }, input);
       return beginTail(s, out, emit, input, cfg, 'RESULT', 'result', input.url);
     }
-    if (input.tabId === s.away.tabId) s.away.tabUrl = input.url;
-    emit('PARALLEL_PAGE', { url: input.url, trigger: 'committed', incognito: Boolean(input.incognito) }, input);
+    const data = { url: input.url, trigger: 'committed', incognito: Boolean(input.incognito) };
+    if (input.tabId === s.away.tabId) { s.away.tabUrl = input.url; data.active = true; }
+    emit('PARALLEL_PAGE', data, input);
   },
   TAB_REMOVED(s, input, cfg, emit, out) {
     if (input.tabId !== s.examTabId) return;

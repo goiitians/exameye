@@ -96,7 +96,8 @@ Components:
 - **Options page** — the one-time configuration form; writes `config` to `chrome.storage.local`.
   The SW reacts to `storage.onChanged` by re-registering the content script and the periodic alarm.
 - **Popup** — read-only live view of `session`, `events` tally, `meta.lastFlushAt`, config errors;
-  refreshes on `storage.onChanged`.
+  refreshes on `storage.onChanged`. Holds a `runtime.connect({ name: 'popup' })` port while open so
+  the SW knows a focus loss is its own UI (§5, FOCUS_LEFT_CHROME).
 - **Holder window (`src/holder/`)** — one small extension popup window the SW opens for desktop
   capture (§6a). The page calls `chrome.desktopCapture.chooseDesktopMedia` itself, consumes the
   stream id with `getUserMedia`, keeps the stream for the rest of the browser session and answers
@@ -339,12 +340,12 @@ Field `data` per event; every event also has `seq`, `ts` (ISO 8601 UTC), `t` (ep
 | EXAM_NAV | onCommitted / onHistoryStateUpdated / onReferenceFragmentUpdated on exam tab | url, adopted? | no |
 | EXAM_WINDOW_MOVED | tabs.onActivated / onCommitted on the exam tab with a different windowId | from, to | no |
 | EXAM_TAB_CLOSED | tabs.onRemoved / TICK backstop | — | no |
-| TAB_SWITCH | tabs.onActivated | toTabId, toUrl, toTitle, toWindowId, incognito | yes |
+| TAB_SWITCH | tabs.onActivated | toTabId, toUrl, toTitle, toWindowId, incognito | yes: captured in the listener at activation time (`input.pre`, only while a session is ARMED/CLOSING, never the exam tab or the holder), so a flip back to the exam tab before the serial queue reaches the event cannot change the image; never a reused file |
 | TAB_RETURN | tabs.onActivated (exam tab) | awayMs | no |
-| PARALLEL_PAGE | onCommitted (other tab, or exam tab navigated off-site) / onActivated | url, title?, trigger (`committed`/`activated`), incognito | yes when trigger=`activated` |
+| PARALLEL_PAGE | onCommitted (other tab, or exam tab navigated off-site) / onActivated | url, title?, trigger (`committed`/`activated`), incognito, active? (`true` when the commit is on the tab the candidate switched to, `away.tabId`) | yes when trigger=`activated` (the activation's pre-captured image, one file shared with its TAB_SWITCH) and when `active` (captured after the page finishes loading, `PAINT_WAIT_MS`, so what the candidate read on the parallel page is on record, not only the tab they opened it in) |
 | WINDOW_MINIMIZED | windows.onFocusChanged→windows.get; TICK poll; CS visibility PROBE | — | no |
 | WINDOW_RESTORED | same | minimizedMs | no |
-| FOCUS_LEFT_CHROME | windows.onFocusChanged (WINDOW_ID_NONE); CS blur PROBE — both re-check the focused window after a 500 ms settle, because a modal dialog (the site's alert/confirm, Chrome's share dialog) reports no focus for ~200 ms and then the window again; the event keeps the time of the first observation | desktopShot? (§6a) | yes (best effort) |
+| FOCUS_LEFT_CHROME | windows.onFocusChanged (WINDOW_ID_NONE); CS blur PROBE — both re-check the focused window after a 500 ms settle, because a modal dialog (the site's alert/confirm, Chrome's share dialog) reports no focus for ~200 ms and then the window again; the event keeps the time of the first observation. Dropped entirely (no event, no shot, no away time) while ExamEye's own toolbar popup holds focus: it keeps a `runtime.connect` port named `popup` open, and on disconnect the SW re-probes focus, so a candidate who left Chrome while the popup was open is logged from that moment. The share picker needs no such rule: a Chrome-owned dialog keeps its parent window focused (no WINDOW_ID_NONE during 36 s of prompting on Windows, 2026-09-21 trial). Chrome's own toolbar menus (Extensions menu) and its "sharing your screen" bar do report WINDOW_ID_NONE on Windows and cannot be told apart from the candidate leaving: those stay logged | desktopShot? (§6a) | yes (best effort) |
 | FOCUS_RETURNED | windows.onFocusChanged | awayMs, desktopShot? | no |
 | WINDOW_OPENED | windows.onCreated | windowId | yes |
 | WINDOW_CLOSED | windows.onRemoved | windowId | no |
@@ -424,12 +425,30 @@ alarm (`windows.getAll`) reconciles anything missed (e.g. restored while the SW 
   of `event.windowId`, else of `windows.getLastFocused()`. Requires `<all_urls>`.
 - Trigger: every event with `needsShot(event)===true` (table above) and the `periodic` alarm
   (`shotIntervalMin`, default 10 → ~18 periodic + ~35 event shots ≈ 55 per paper).
-- **Coalescing:** Chrome limits `captureVisibleTab` to 2 calls/s. The SW keeps
-  `meta.lastShot = {at, file}`; if `now − at < 2000` the event reuses `lastShot.file` instead of
-  capturing. This also guarantees unique file names (one per second at most). A clock set back (§14 item 16) breaks both assumptions, so a negative `now − at` captures afresh and a name already present in `shots` gets a `-2`, `-3`… suffix before `.jpg`; `tailshots.decide` treats a negative gap as elapsed for the same reason. `shots` and `meta.lastShot` are written in the same batched `storage.set` as the event (§7), never ahead of it.
+- **Quota:** Chrome limits `captureVisibleTab` to 2 calls/s per extension. `adapters/capture.js`
+  serialises captures and holds the third call within a second until the window passes, so the
+  listener-time and queue-time captures never refuse each other.
+- **Coalescing:** The SW keeps
+  `meta.lastShot = {at, file, tabId}`; if `now − at < 2000` **and the event's subject tab is the
+  same** the event reuses `lastShot.file` instead of capturing. The subject (`shotSubject`) is the
+  active tab of `event.windowId`, else of the last-focused window, with the holder window replaced
+  by the exam window (the holder page is never a subject). So a TAB_SWITCH or activated
+  PARALLEL_PAGE never inherits a shot of the exam tab, and an exam-tab event never inherits a shot
+  of the other tab. An image captured at listener time (`input.pre.b64`: SCREEN_CHANGED, tab
+  activations) is filed once per dispatch and never replaced by a reuse. A capture refused at
+  listener time (`pre.error`: the 2 calls/s quota, a chrome:// page) is retried from the queue only
+  while the switched-to tab is still the visible one. TAB_SWITCH and PARALLEL_PAGE are **tab-bound**:
+  their image must show the named tab (`subject.tabId === event.tabId`, checked before and, for a
+  paint-waited PARALLEL_PAGE, again after the wait) or the event records `shotError` ("tab no longer
+  visible", or the listener's refusal), because a fresh capture after a flip back would show the exam
+  tab under the parallel page's name. Coalescing also guarantees unique file names (one per second at most). A clock set back (§14 item 16) breaks both assumptions, so a negative `now − at` captures afresh and a name already present in `shots` gets a `-2`, `-3`… suffix before `.jpg`; `tailshots.decide` treats a negative gap as elapsed for the same reason. `shots` and `meta.lastShot` are written in the same batched `storage.set` as the event (§7), never ahead of it.
 - File name: `screenshots/<YYYYMMDD-HHMMSS>_<EVENT>.jpg` (`ids.shotFile`), local time.
 - Failure (chrome:// pages, minimised window, throttling): `event.shot=null`,
-  `event.data.shotError=<message>`; the event is still recorded.
+  `event.data.shotError=<message>`; the event is still recorded, no placeholder image is made up,
+  and both summaries say so: `summary.txt` adds `Not captured: n` after the screenshot count with
+  one line per event (time, event, URL, reason) and the HTML timeline cell reads `not captured:
+  <reason>`. Chrome's activeTab refusal (chrome:// and other extensions' pages) is rendered as
+  "Chrome does not let extensions capture this page" (`describeShotError`).
 - The base64 body is stored in `shots[file]` in storage.local (needs `unlimitedStorage`; ~15 MB
   worst case) so `summary.html` can embed every screenshot at session end, and is enqueued as a
   file write immediately.

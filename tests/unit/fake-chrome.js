@@ -12,7 +12,13 @@ export function installFakeChrome() {
       id: 'fake-ext-id', onStartup: evt(), onInstalled: evt(), onMessage: evt(),
       getURL: (p) => 'chrome-extension://fake-ext-id/' + p,
       optionsOpened: 0, async openOptionsPage() { c.runtime.optionsOpened += 1; },
-      sent: [], responder: null,
+      sent: [], responder: null, ports: [], onConnect: evt(),
+      connect(info) {
+        const port = { name: info?.name, onDisconnect: evt(), disconnect() { port.onDisconnect.emit(port); } };
+        c.runtime.ports.push(port);
+        c.runtime.onConnect.emit(port);
+        return port;
+      },
       async sendMessage(msg) {
         c.runtime.sent.push(msg);
         if (c.runtime.responder) return c.runtime.responder(msg);

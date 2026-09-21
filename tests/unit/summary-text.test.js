@@ -127,3 +127,18 @@ test('summary.txt has the Desktop line after Log chain and a Desktop frames line
   const noFramesText = renderSummaryText(ctx5);
   assert.doesNotMatch(noFramesText, /^Desktop frames:/m);
 });
+
+test('an event whose screenshot failed is listed as not captured, with a readable reason', () => {
+  const err = "The 'activeTab' permission is not in effect because this extension has not been in invoked.";
+  const evs = [
+    events[0],
+    { seq: 2, t: started + 5000, name: 'TAB_SWITCH', data: { toTabId: 5, toUrl: 'chrome://newtab/', toTitle: 'New tab', toWindowId: 3, incognito: false, shotError: err }, shot: null, tabId: 5, windowId: 3 },
+  ];
+  const txt = renderSummaryText({ ...ctx, events: evs, tally: tally(evs) });
+  const lines = txt.split('\n');
+  assert.ok(lines.includes('Screenshots: 1 (screenshots/)'));
+  const i = lines.indexOf('Not captured: 1');
+  assert.ok(i > 0, 'a Not captured line must follow the screenshot count');
+  assert.match(lines[i + 1], /^  09:15:07  TAB_SWITCH  chrome:\/\/newtab\/  Chrome does not let extensions capture this page \(chrome:\/\/ or another extension\)$/);
+  assert.ok(!renderSummaryText(ctx).includes('Not captured'));
+});

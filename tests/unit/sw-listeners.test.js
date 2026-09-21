@@ -27,13 +27,19 @@ test('onCommitted: subframes ignored, main frame arms and takes a screenshot', a
   assert.match((await get('lines')).lines[1], /shot="screenshots\//);
 });
 
-test('onActivated within 2 s reuses the previous screenshot file', async () => {
+test('onActivated within 2 s of the arming shot takes its own screenshot of the new tab', async () => {
+  chrome.tabs.list[1].active = true;
+  chrome.tabs.captureVisibleTab = async (w) => 'data:image/jpeg;base64,TAB' + chrome.tabs.list.find(t => t.windowId === w && t.active).id;
   await chrome.tabs.onActivated.emit({ tabId: 2, windowId: 3 });
   await sw.settled();
-  const { events } = await get('events');
+  const { events, shots } = await get(['events', 'shots']);
   assert.deepEqual(events.slice(-2).map(e => e.name), ['TAB_SWITCH', 'PARALLEL_PAGE']);
-  assert.equal(events.at(-2).shot, events[0].shot);
+  assert.notEqual(events.at(-2).shot, events[0].shot, 'the arming shot shows the exam tab, not the switched-to one');
+  assert.equal(shots[events.at(-2).shot], 'TAB2');
+  assert.equal(events.at(-1).shot, events.at(-2).shot);
   assert.equal(events.at(-2).data.toTitle, 'G');
+  chrome.tabs.captureVisibleTab = async () => 'data:image/jpeg;base64,/9j/FAKE';
+  chrome.tabs.list[1].active = false;
 });
 
 test('onMessage: only the exam tab is heard', async () => {

@@ -8,10 +8,13 @@ export const SHOT_EVENTS = new Set([
 ]);
 
 export function needsShot(ev) {
-  if (ev.name === 'PARALLEL_PAGE') return ev.data.trigger === 'activated';
+  if (ev.name === 'PARALLEL_PAGE') return ev.data.trigger === 'activated' || ev.data.active === true;
   if (ev.name === 'SESSION_DISARMED') return ev.data.outcome !== 'ABANDONED';
   return SHOT_EVENTS.has(ev.name);
 }
+
+// Chrome refuses chrome:// and other extensions' pages with an activeTab message that means nothing to staff
+export const describeShotError = (err) => /activeTab/.test(err) ? 'Chrome does not let extensions capture this page (chrome:// or another extension)' : String(err);
 
 export const DESKTOP_FRAME_EVENTS = new Set(['FOCUS_LEFT_CHROME', 'FOCUS_RETURNED', 'PERIODIC', 'DESKTOP_FRAME']);
 

@@ -35,6 +35,7 @@ test('a page that never reports complete is captured anyway after the bounded wa
 test('events that are not navigation-born capture immediately', async () => {
   tab.status = 'complete'; tab.url = 'https://e.x/start';
   await sw.dispatch({ kind: 'NAV', tabId: 1, windowId: 3, url: 'https://e.x/start', at: Date.now() + 10000 });
+  await new Promise((r) => setTimeout(r, 1000)); // clear the 2-per-second capture quota window
   const n = captured.length;
   const t0 = Date.now();
   await sw.dispatch({ kind: 'PERIODIC', at: Date.now() + 20000 });

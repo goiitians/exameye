@@ -1,6 +1,7 @@
 import { fmtDuration, fmtLocal, tzOffset } from './ids.js';
 import { describeOutcome, describeDesktopSummary } from './summary-text.js';
 import { FLAGS } from './flags.js';
+import { describeShotError } from './events.js';
 
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 export const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ESC[c]);
@@ -54,7 +55,7 @@ export function renderSummaryHtml({ session, outcome, endedAt, events, tally, in
   const phaseRows = [row(['Exam', `${clock(session.startedAt)} - ${clock(examEnd)}`, fmtDuration(examEnd - session.startedAt), `${examShots} screenshots`])];
   if (showTail) phaseRows.push(row(['Post-submit tail', `${clock(session.examEndedAt)} - ${clock(endedAt)}`, fmtDuration(endedAt - session.examEndedAt), `${tally.tail.shots} screenshots`]));
 
-  const timeline = events.map(e => `<tr class="${e.data?.phase === 'tail' ? 'tail' : ''}"><td class="n">${e.seq}</td><td class="t">${h(clock(e.t))}</td><td class="ev">${h(e.name)}${e.data?.phase === 'tail' ? ' <span class="tag">tail</span>' : ''}</td><td class="d">${details(e.data)}</td><td class="sh">${e.shot ? `<a href="#${fid.get(e.shot)}">tab</a>` : ''}${desktopFrame(e) ? ` <a href="#${fid.get(desktopFrame(e))}">desktop</a>` : ''}</td></tr>`);
+  const timeline = events.map(e => `<tr class="${e.data?.phase === 'tail' ? 'tail' : ''}"><td class="n">${e.seq}</td><td class="t">${h(clock(e.t))}</td><td class="ev">${h(e.name)}${e.data?.phase === 'tail' ? ' <span class="tag">tail</span>' : ''}</td><td class="d">${details(e.data)}</td><td class="sh">${e.shot ? `<a href="#${fid.get(e.shot)}">tab</a>` : e.data?.shotError ? `<span class="noshot">not captured: ${h(describeShotError(e.data.shotError))}</span>` : ''}${desktopFrame(e) ? ` <a href="#${fid.get(desktopFrame(e))}">desktop</a>` : ''}</td></tr>`);
 
   const gallery = files.map((f, i) => {
     const m = fileIndex.get(f);
@@ -77,7 +78,7 @@ main{padding:20px 28px;max-width:1400px;margin:0 auto}h2{font-size:15px;text-tra
 .flag{border-left:5px solid var(--good)}.flag.warning{border-left-color:var(--warning)}.flag.serious{border-left-color:var(--serious)}.flag.critical{border-left-color:var(--critical)}.flag .v{font-size:24px;font-weight:700;margin-top:2px}.flag .v small{font-size:12px;font-weight:400;color:var(--ink2);margin-left:6px}
 .bars{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px}.bar{display:grid;grid-template-columns:200px 1fr 80px;align-items:center;gap:12px;padding:5px 0}.bl{color:var(--ink2)}.bt{height:12px;background:#eeede9;border-radius:4px;overflow:hidden}.bf{height:100%;background:var(--blue);border-radius:0 4px 4px 0}.bv{text-align:right;font-variant-numeric:tabular-nums}
 table{border-collapse:collapse;width:100%;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden}th,td{padding:7px 10px;text-align:left;vertical-align:top;border-top:1px solid var(--line)}th{background:#f4f3ef;color:var(--ink2);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.04em;border-top:0;position:sticky;top:0}tr:nth-child(even) td{background:#fbfaf8}tr.tail td{background:#f6f8fc}
-td.n,td.t{white-space:nowrap;color:var(--muted);font-variant-numeric:tabular-nums}td.ev{white-space:nowrap;font-weight:600}td.d{color:var(--ink2);word-break:break-word}td.sh a{margin-right:6px}.kv{margin-right:10px}.kv b{color:var(--ink);font-weight:500}
+td.n,td.t{white-space:nowrap;color:var(--muted);font-variant-numeric:tabular-nums}td.ev{white-space:nowrap;font-weight:600}td.d{color:var(--ink2);word-break:break-word}td.sh a{margin-right:6px}.noshot{color:var(--muted);font-size:12px}.kv{margin-right:10px}.kv b{color:var(--ink);font-weight:500}
 .tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:999px;background:#e8eefb;color:#1d3f7a;vertical-align:middle}.tag.desktop{background:#fdebd9;color:#7a3a10}.tag.tab{background:#e8eefb;color:#1d3f7a}
 .muted{color:var(--muted)}.empty{color:var(--muted);margin:6px 0 0}a{color:var(--blue)}
 .gallery{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}figure{margin:0;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px}figure img{width:100%;height:auto;display:block;border-radius:6px;cursor:zoom-in}figcaption{font-size:12px;margin-top:6px;word-break:break-all}.lbnav{display:none}

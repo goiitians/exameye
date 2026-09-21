@@ -44,7 +44,8 @@ test('a tick that fires while endSession is mid-flush does not re-run it over th
   // in) are relevant to "was endSession replayed redundantly".
   const before = chrome.downloads.calls.length;
   const disarmP = sw.dispatch({ kind: 'NAV', tabId: 15, windowId: 3, url: 'https://e.x/result', at: 900500 });
-  for (let i = 0; i < 50 && !started; i++) await new Promise((r) => setTimeout(r, 0));
+  // the disarm shot may first wait out the 2-per-second capture quota, so poll on wall time
+  for (const until = Date.now() + 3000; Date.now() < until && !started;) await new Promise((r) => setTimeout(r, 5));
   assert.ok(started, 'the end-of-session flush never reached the gated log.txt download');
   const tickP = sw.tick();
   await new Promise((r) => setTimeout(r, 20));

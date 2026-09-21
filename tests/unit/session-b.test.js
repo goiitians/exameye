@@ -42,8 +42,16 @@ test('a parallel tab that navigates is recorded once (committed), not again on t
   r = reduce(r.session, { kind: 'NAV', tabId: 42, windowId: 3, url: 'https://g.x/search?q=answer', incognito: false, at: T0 + 2000 }, cfg);
   assert.deepEqual(names(r), ['PARALLEL_PAGE']);
   assert.equal(r.events[0].data.trigger, 'committed');
+  assert.equal(r.events[0].data.active, true, 'a commit on the tab the candidate is looking at is marked active');
   r = reduce(r.session, act(42, T0 + 2500, { url: 'https://g.x/search?q=answer' }), cfg);
   assert.deepEqual(names(r), []);
+});
+
+test('a commit on a background tab (not the away tab) is a plain committed PARALLEL_PAGE without active', () => {
+  let r = reduce(armed(), act(42, T0 + 1000), cfg);
+  r = reduce(r.session, { kind: 'NAV', tabId: 43, windowId: 3, url: 'https://g.x/other', incognito: false, at: T0 + 2000 }, cfg);
+  assert.deepEqual(names(r), ['PARALLEL_PAGE']);
+  assert.deepEqual(r.events[0].data, { url: 'https://g.x/other', trigger: 'committed', incognito: false });
 });
 
 test('focus left/returned pair with duration, no duplicates', () => {

@@ -2,6 +2,10 @@ import { tally } from '../core/counters.js';
 import { describeDesktop } from '../core/desktop.js';
 import { flagCount } from '../core/flags.js';
 
+// The SW treats focus lost while this port is open as its own UI, not the candidate leaving Chrome.
+// A service-worker restart drops the port; reconnecting keeps the still-open popup visible to the new SW.
+const connect = () => chrome.runtime.connect({ name: 'popup' }).onDisconnect.addListener(connect);
+connect();
 const $ = (id) => document.getElementById(id);
 
 async function render() {

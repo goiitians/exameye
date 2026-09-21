@@ -28,11 +28,15 @@ const SHOT_GAP_MS = 2000;
 const BADGE_COLOR = '#d03b3b';
 const PAINT_WAIT_MS = 1500;
 const FOCUS_SETTLE_MS = 500;
-// arm/disarm fire at onCommitted, before the new page has painted; without a wait the shot shows the previous page
-const NAV_BORN = new Set(['SESSION_ARMED', 'SESSION_DISARMED', 'RESULT_PAGE']);
+// arm/disarm and a commit on the tab the candidate is looking at fire at onCommitted, before the
+// new page has painted; without a wait the shot shows the previous page
+const NAV_BORN = new Set(['SESSION_ARMED', 'SESSION_DISARMED', 'RESULT_PAGE', 'PARALLEL_PAGE']);
 const HOLDER_KINDS = new Set(['NAV', 'TAB_ACTIVATED', 'WINDOW_CREATED', 'WINDOW_REMOVED']);
+// events about another tab: the image must show that tab or nothing (a shot of the exam tab under this name is worse than none)
+const TAB_BOUND = new Set(['TAB_SWITCH', 'PARALLEL_PAGE']);
 const now = () => Date.now();
 
+let popupPorts = 0;
 let queue = Promise.resolve();
 // A step that throws is recorded (console + meta.lastError for the popup) and swallowed: the
 // queue must keep serving later inputs, and nothing awaits dispatch() from the listeners anyway.
@@ -84,6 +88,8 @@ async function dispatchNow(input) {
   let { events = [], lines = [], lastHash = GENESIS } = st;
   const meta = st.meta || {};
   if (HOLDER_KINDS.has(input.kind) && (input.url === holderUrl() || input.windowId === meta.desktop?.holderWindowId)) return;
+  // focus resting on ExamEye's own toolbar popup is not the candidate leaving Chrome
+  if (input.kind === 'FOCUS' && input.windowId === -1 && popupPorts > 0) return;
   const newEvents = [];
   if (session.state !== 'IDLE' && meta.lastSeenAt && input.at - meta.lastSeenAt > GAP_MS) {
     const g = reduce(session, { kind: 'GAP', at: input.at, lastSeenAt: meta.lastSeenAt, reason: input.kind === 'STARTUP' ? 'browser-restart' : 'sw-restart' }, cfg);
@@ -103,7 +109,7 @@ async function dispatchNow(input) {
     const h = headerLine(r.session);
     events = []; lines = [h]; lastHash = await shortHash(h);
   }
-  const { added, shots, last } = await takeShots(newEvents, input.pre, armed);
+  const { added, shots, last } = await takeShots(newEvents, input.pre, armed, r.session.examWindowId ?? session.examWindowId);
   if (meta.desktop?.state === 'on') {
     for (const ev of newEvents) {
       if (ev.name === 'FOCUS_LEFT_CHROME') { await store.patchMeta({ desktopAway: EMPTY_TAIL }); await setAway(meta.desktop.holderTabId, true); }
@@ -167,14 +173,24 @@ async function runEffects(effects, cfg, pendingEnd) {
   }
 }
 
-async function takeShots(events, pre, fresh) {
+// The holder is ExamEye's own page: when it is the last-focused window (the share dialog has
+// just closed) the exam window is what the candidate sees behind it.
+async function shotSubject(ev, examWindowId, holderWindowId) {
+  let windowId = ev.windowId >= 0 ? ev.windowId : await lastFocusedWindowId();
+  if (windowId === holderWindowId && examWindowId != null) windowId = examWindowId;
+  const [tab] = await queryActiveTab(windowId).catch(() => []);
+  return { windowId, tabId: tab?.id ?? null };
+}
+
+async function takeShots(events, pre, fresh, examWindowId) {
   const { meta = {} } = await store.get('meta');
   const desktopOn = meta.desktop?.state === 'on';
   const wantDesktop = events.some(e => e.name === 'DESKTOP_FRAME' || (needsDesktopFrame(e) && desktopOn));
   if (!events.some(needsShot) && !wantDesktop) return { added: [], shots: fresh ? {} : null, last: null };
   const shots = fresh ? {} : ((await store.get('shots')).shots || {});
-  let last = (fresh ? null : meta.lastShot) || { at: 0, file: null };
+  let last = (fresh ? null : meta.lastShot) || { at: 0, file: null, tabId: null };
   const added = [];
+  let preFile = null;
   // a clock set back can reproduce an earlier stamp; the earlier JPEG must not be overwritten
   const unique = (file) => { let f = file, n = 2; while (f in shots) f = file.replace(/\.jpg$/, `-${n++}.jpg`); return f; };
   for (const ev of events) {
@@ -197,25 +213,38 @@ async function takeShots(events, pre, fresh) {
       }
     }
     if (!needsShot(ev)) continue;
-    if (ev.name === 'SCREEN_CHANGED') {
-      const file = unique(shotFile(ev.t, ev.name));
-      shots[file] = pre.b64;
-      added.push({ file, b64: pre.b64 });
-      ev.shot = file;
-      last = { at: ev.t, file };
+    // an image captured at listener time is the truth for that instant: file it once
+    if (pre?.b64) {
+      if (!preFile) {
+        preFile = unique(shotFile(ev.t, ev.name));
+        shots[preFile] = pre.b64;
+        added.push({ file: preFile, b64: pre.b64 });
+        last = { at: ev.t, file: preFile, tabId: pre.tabId };
+      }
+      ev.shot = preFile;
       continue;
     }
-    // a negative delta means the clock was set back: the previous shot is not "2 s old", capture again
-    if (last.file && ev.t >= last.at && ev.t - last.at < SHOT_GAP_MS) { ev.shot = last.file; continue; }
+    let subject = await shotSubject(ev, examWindowId, meta.desktop?.holderWindowId);
+    const visible = () => !TAB_BOUND.has(ev.name) || subject.tabId === ev.tabId;
+    // a capture refused at listener time (quota, chrome:// page) is retried here only while the
+    // switched-to tab is still the visible one; after a flip back, a fresh capture would show the exam tab
+    if (!visible()) { ev.data.shotError = pre?.error ?? 'tab no longer visible'; continue; }
+    // reuse only a shot of the same tab; a negative delta means the clock was set back and the
+    // previous shot is not "2 s old", capture again
+    if (last.file && last.tabId != null && last.tabId === subject.tabId && ev.t >= last.at && ev.t - last.at < SHOT_GAP_MS) { ev.shot = last.file; continue; }
     try {
-      if (NAV_BORN.has(ev.name)) await awaitLoaded(ev.tabId, PAINT_WAIT_MS);
-      const windowId = ev.windowId >= 0 ? ev.windowId : await lastFocusedWindowId();
-      const b64 = await captureJpeg(windowId);
+      // the subject is what is visible after the wait: a tab flipped during it must not be filed under the old tab id
+      if (NAV_BORN.has(ev.name)) {
+        await awaitLoaded(ev.tabId, PAINT_WAIT_MS);
+        subject = await shotSubject(ev, examWindowId, meta.desktop?.holderWindowId);
+        if (!visible()) { ev.data.shotError = 'tab no longer visible'; continue; }
+      }
+      const b64 = await captureJpeg(subject.windowId);
       const file = unique(shotFile(ev.t, ev.name));
       shots[file] = b64;
       added.push({ file, b64 });
       ev.shot = file;
-      last = { at: ev.t, file };
+      last = { at: ev.t, file, tabId: subject.tabId };
     } catch (e) {
       ev.data.shotError = String(e?.message || e);
     }
@@ -252,7 +281,7 @@ async function screenChangedNow(input) {
   const { keep, tail } = decide(meta.tail, { hash, at: input.at });
   if (!keep) return;
   await store.patchMeta({ tail });
-  await dispatchNow({ ...input, data: { hash }, pre: { b64 } });
+  await dispatchNow({ ...input, data: { hash }, pre: { b64, tabId: input.tabId } });
 }
 
 export const promptDesktop = () => enqueue(promptDesktopNow);
@@ -510,9 +539,21 @@ async function onNav(d) {
 chrome.webNavigation.onCommitted.addListener(onNav);
 chrome.webNavigation.onHistoryStateUpdated.addListener(onNav);
 chrome.webNavigation.onReferenceFragmentUpdated.addListener(onNav);
+// The queue is serial: an activation queued behind a paint wait or a holder round trip would be
+// captured ~1.5 s late, after a quick flip back to the exam tab. Capture at activation instead;
+// only during a session, never the exam tab or the holder.
+async function preCapture(tabId, windowId, url) {
+  const { session, meta = {} } = await store.get(['session', 'meta']);
+  if (!session || session.state === 'IDLE' || tabId === session.examTabId) return undefined;
+  if (url === holderUrl() || windowId === meta.desktop?.holderWindowId) return undefined;
+  try { return { b64: await captureJpeg(windowId), tabId }; } catch (e) { return { error: String(e?.message || e), tabId }; }
+}
 chrome.tabs.onActivated.addListener(async ({ tabId, windowId }) => {
   const tab = await getTab(tabId);
-  dispatch({ kind: 'TAB_ACTIVATED', tabId, windowId, url: tab?.pendingUrl || tab?.url || '', title: tab?.title || '', incognito: Boolean(tab?.incognito), at: now() });
+  const url = tab?.pendingUrl || tab?.url || '';
+  const input = { kind: 'TAB_ACTIVATED', tabId, windowId, url, title: tab?.title || '', incognito: Boolean(tab?.incognito), at: now() };
+  input.pre = await preCapture(tabId, windowId, url);
+  dispatch(input);
 });
 chrome.tabs.onRemoved.addListener((tabId) => dispatch({ kind: 'TAB_REMOVED', tabId, at: now() }));
 chrome.windows.onFocusChanged.addListener(async (windowId) => {
@@ -532,6 +573,13 @@ chrome.downloads.onCreated.addListener((item) => {
   // this also drops page-initiated data: downloads (e.g. <a download href="data:...">), accepted.
   if (item.byExtensionId === chrome.runtime.id || item.url?.startsWith('data:')) return;
   dispatch({ kind: 'DOWNLOAD', url: item.url, filename: item.filename, mime: item.mime, at: now() });
+});
+// The popup holds a port while open. When it closes, focus may land on another app rather than a
+// Chrome window and fire no onFocusChanged, so the SW asks where focus is now.
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== 'popup') return;
+  popupPorts += 1;
+  port.onDisconnect.addListener(() => { popupPorts -= 1; setTimeout(probe, 0); });
 });
 chrome.runtime.onMessage.addListener((msg, sender, respond) => {
   if (msg?.type === 'desktop') { enqueue(() => desktopMessageNow(msg, sender, respond)); return true; }

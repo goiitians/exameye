@@ -10,6 +10,7 @@ test('needsShot follows the catalogue', () => {
   assert.equal(needsShot({ name: 'IDLE_START', data: {} }), false);
   assert.equal(needsShot({ name: 'PARALLEL_PAGE', data: { trigger: 'activated' } }), true);
   assert.equal(needsShot({ name: 'PARALLEL_PAGE', data: { trigger: 'committed' } }), false);
+  assert.equal(needsShot({ name: 'PARALLEL_PAGE', data: { trigger: 'committed', active: true } }), true);
   assert.equal(needsShot({ name: 'SESSION_DISARMED', data: { outcome: 'RESULT' } }), true);
   assert.equal(needsShot({ name: 'SESSION_DISARMED', data: { outcome: 'ABANDONED' } }), false);
   assert.equal(needsShot({ name: 'SESSION_DISARMED', data: { outcome: 'SUBMITTED' } }), true);

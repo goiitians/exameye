@@ -26,6 +26,17 @@ test('alarms', async () => {
   assert.deepEqual(Object.keys(chrome.alarms.alarms), ['tick']);
 });
 
+test('captureJpeg never issues more than two captures within one second (Chrome\'s captureVisibleTab quota)', async () => {
+  const real = chrome.tabs.captureVisibleTab;
+  const at = [];
+  chrome.tabs.captureVisibleTab = async () => { at.push(Date.now()); return 'data:image/jpeg;base64,X'; };
+  try {
+    await Promise.all([captureJpeg(3), captureJpeg(3), captureJpeg(3), captureJpeg(3)]);
+  } finally { chrome.tabs.captureVisibleTab = real; }
+  assert.equal(at.length, 4);
+  for (let i = 2; i < at.length; i++) assert.ok(at[i] - at[i - 2] >= 1000, `call ${i} came ${at[i] - at[i - 2]} ms after call ${i - 2}`);
+});
+
 test('captureJpeg strips the data: prefix', async () => {
   assert.equal(await captureJpeg(3), '/9j/FAKE');
 });
