@@ -35,7 +35,7 @@ try {
   New-Item -ItemType Directory -Path $tmp | Out-Null
   # release assets come as application/octet-stream, for which PowerShell 5.1 leaves .Content empty
   Invoke-WebRequest -UseBasicParsing -Uri "$BaseUrl/version.txt" -OutFile (Join-Path $tmp 'version.txt') -TimeoutSec 60
-  $latest = (Get-Content -Raw (Join-Path $tmp 'version.txt')).Trim()
+  $latest = "$(Get-Content -Raw (Join-Path $tmp 'version.txt'))".Trim()
   if (-not $latest) { Log 'failed: empty version.txt'; exit 0 }
   if (-not (Newer $latest $installed)) { Log "up to date $installed"; exit 0 }
   if (ChromeRunning) { Log "skipped ${latest}: chrome running"; exit 0 }
@@ -47,15 +47,15 @@ try {
   if ($got -ne $latest) { Log "failed: bad archive ($got)"; exit 0 }
   # stage next to the live folder and swap by two renames: a failure anywhere leaves the live folder untouched
   foreach ($d in @($new, $old)) { if (Test-Path $d) { Remove-Item -Recurse -Force $d } }
-  robocopy (Join-Path $src 'ExamEye') $new /E /NFL /NDL /NJH /NJS /NP 2>$null | Out-Null
+  & { $ErrorActionPreference = 'Continue'; robocopy (Join-Path $src 'ExamEye') $new /E /NFL /NDL /NJH /NJS /NP 2>$null } | Out-Null
   if ($LASTEXITCODE -ge 8) { Log 'failed: mirror'; exit 0 }
   # defaults.json carries the seat id typed at install and is read once, on first install
   Copy-Item (Join-Path $ext 'defaults.json') (Join-Path $new 'defaults.json') -Force -ErrorAction SilentlyContinue
   if (ChromeRunning) { Log "skipped ${latest}: chrome running"; exit 0 }
   Rename-Item -Path $ext -NewName (Split-Path -Leaf $old)
   try { Rename-Item -Path $new -NewName (Split-Path -Leaf $ext) } catch { Rename-Item -Path $old -NewName (Split-Path -Leaf $ext); throw }
-  Remove-Item -Recurse -Force $old
   Log "updated $installed -> $latest"
+  try { Remove-Item -Recurse -Force $old } catch { Log (('failed: cleanup ' + $_.Exception.Message) -replace '\s+', ' ') }
   try { Copy-Item (Join-Path $src 'Update-ExamEye.ps1') (Join-Path $dir 'Update-ExamEye.ps1') -Force } catch { Log (('failed: self-copy ' + $_.Exception.Message) -replace '\s+', ' ') }
 } catch {
   Log (('failed: ' + $_.Exception.Message) -replace '\s+', ' ')
