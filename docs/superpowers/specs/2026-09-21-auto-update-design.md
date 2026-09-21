@@ -53,13 +53,13 @@ share a centre's address):
 ## 3. Updater
 
 Two scripts with identical logic, shipped at the installer root and copied by the installer to
-`<home>/ExamEye-updater/` (outside the extension folder, so the mirror step never touches them):
+`<home>/ExamEye-updater/` (outside the extension folder, so the swap never touches them):
 
 - Windows: `Update-ExamEye.ps1`, run by a per-user Scheduled Task `ExamEye Update`
-  (triggers: at logon, and every hour; action: `powershell -NoProfile -ExecutionPolicy Bypass -File
-  <home>\ExamEye-updater\Update-ExamEye.ps1`). Registered with `Register-ScheduledTask` for the
-  current user, no elevation, `MultipleInstances IgnoreNew` so an hourly run never overlaps a logon
-  run.
+  (triggers: at logon, and every hour; action: `powershell -NoProfile -ExecutionPolicy Bypass
+  -WindowStyle Hidden -File <home>\ExamEye-updater\Update-ExamEye.ps1`). Registered with
+  `Register-ScheduledTask` for the current user, no elevation, `MultipleInstances IgnoreNew` and
+  `StartWhenAvailable` so an hourly run never overlaps a logon run.
 - macOS: `update-exameye.sh`, run by a launchd agent `~/Library/LaunchAgents/in.exameye.update.plist`
   (`RunAtLoad` true, `StartInterval` 3600, stdout/stderr to the log below). Loaded with
   `launchctl bootstrap gui/$UID` (falls back to `launchctl load`).

@@ -34,7 +34,7 @@ try {
   $tmp = Join-Path ([IO.Path]::GetTempPath()) ('exameye-update-' + [Guid]::NewGuid().ToString('N'))
   New-Item -ItemType Directory -Path $tmp | Out-Null
   # release assets come as application/octet-stream, for which PowerShell 5.1 leaves .Content empty
-  Invoke-WebRequest -UseBasicParsing -Uri "$BaseUrl/version.txt" -OutFile (Join-Path $tmp 'version.txt') -TimeoutSec 60
+  try { Invoke-WebRequest -UseBasicParsing -Uri "$BaseUrl/version.txt" -OutFile (Join-Path $tmp 'version.txt') -TimeoutSec 60 } catch { Log 'failed: cannot read version.txt'; exit 0 }
   $latest = "$(Get-Content -Raw (Join-Path $tmp 'version.txt'))".Trim()
   if (-not $latest) { Log 'failed: empty version.txt'; exit 0 }
   if (-not (Newer $latest $installed)) { Log "up to date $installed"; exit 0 }
@@ -50,7 +50,7 @@ try {
   & { $ErrorActionPreference = 'Continue'; robocopy (Join-Path $src 'ExamEye') $new /E /NFL /NDL /NJH /NJS /NP 2>$null } | Out-Null
   if ($LASTEXITCODE -ge 8) { Log 'failed: mirror'; exit 0 }
   # defaults.json carries the seat id typed at install and is read once, on first install
-  if (Test-Path (Join-Path $ext 'defaults.json')) { Copy-Item (Join-Path $ext 'defaults.json') (Join-Path $new 'defaults.json') -Force }
+  if (Test-Path (Join-Path $ext 'defaults.json')) { try { Copy-Item (Join-Path $ext 'defaults.json') (Join-Path $new 'defaults.json') -Force } catch { Log 'failed: defaults'; exit 0 } }
   if (ChromeRunning) { Log "skipped ${latest}: chrome running"; exit 0 }
   Rename-Item -Path $ext -NewName (Split-Path -Leaf $old)
   try { Rename-Item -Path $new -NewName (Split-Path -Leaf $ext) } catch { Rename-Item -Path $old -NewName (Split-Path -Leaf $ext); throw }

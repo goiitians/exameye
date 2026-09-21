@@ -15,12 +15,13 @@ read -r -p "Seat or centre ID for this desk [C01]: " SEAT
 SEAT="${SEAT:-C01}"
 sed -i '' "s/\"seat\": *\"[^\"]*\"/\"seat\": \"$SEAT\"/" "$DEST/defaults.json"
 printf '%s' "$DEST" | pbcopy
-UPD="$HOME/ExamEye-updater"
-mkdir -p "$UPD" "$HOME/Library/LaunchAgents"
-cp "$(dirname "$SRC")/update-exameye.sh" "$UPD/update-exameye.sh"
-chmod +x "$UPD/update-exameye.sh"
-PL="$HOME/Library/LaunchAgents/in.exameye.update.plist"
-cat > "$PL" <<PLIST
+register_updater() {
+  UPD="$HOME/ExamEye-updater"
+  mkdir -p "$UPD" "$HOME/Library/LaunchAgents" || return 1
+  cp "$(dirname "$SRC")/update-exameye.sh" "$UPD/update-exameye.sh" || return 1
+  chmod +x "$UPD/update-exameye.sh" || return 1
+  PL="$HOME/Library/LaunchAgents/in.exameye.update.plist"
+  cat > "$PL" <<PLIST || return 1
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -32,9 +33,14 @@ cat > "$PL" <<PLIST
   <key>StandardErrorPath</key><string>$UPD/launchd.log</string>
 </dict></plist>
 PLIST
-launchctl bootout "gui/$(id -u)/in.exameye.update" 2>/dev/null || true
-launchctl bootstrap "gui/$(id -u)" "$PL" 2>/dev/null || launchctl load "$PL"
-echo "Automatic updates registered (launchd agent in.exameye.update: at login and hourly, only while Chrome is closed)."
+  launchctl bootout "gui/$(id -u)/in.exameye.update" 2>/dev/null || true
+  launchctl bootstrap "gui/$(id -u)" "$PL" 2>/dev/null || launchctl load "$PL"
+}
+if register_updater; then
+  echo "Automatic updates registered (launchd agent in.exameye.update: at login and hourly, only while Chrome is closed)."
+else
+  echo "Could not register the hourly update agent. ExamEye still works; updates will need a re-install."
+fi
 open -a "Google Chrome" "chrome://extensions" 2>/dev/null || open -a "Microsoft Edge" "edge://extensions"
 cat <<MSG
 

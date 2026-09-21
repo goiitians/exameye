@@ -19,8 +19,7 @@ powershell -NoProfile -Command "$p='%DEST%\defaults.json'; $j=Get-Content -Raw $
 <nul set /p "=%DEST%" | clip
 set "UPD=%USERPROFILE%\ExamEye-updater"
 if not exist "%UPD%" mkdir "%UPD%"
-copy /Y "%~dp0Update-ExamEye.ps1" "%UPD%\Update-ExamEye.ps1" >nul
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$a = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"' + $env:USERPROFILE + '\ExamEye-updater\Update-ExamEye.ps1\"'); $t = @((New-ScheduledTaskTrigger -AtLogOn), (New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(5) -RepetitionInterval (New-TimeSpan -Hours 1) -RepetitionDuration (New-TimeSpan -Days 3650))); $s = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -StartWhenAvailable; Register-ScheduledTask -TaskName 'ExamEye Update' -Action $a -Trigger $t -Settings $s -Force | Out-Null"
+copy /Y "%~dp0Update-ExamEye.ps1" "%UPD%\Update-ExamEye.ps1" >nul && powershell -NoProfile -ExecutionPolicy Bypass -Command "$a = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"' + $env:USERPROFILE + '\ExamEye-updater\Update-ExamEye.ps1\"'); $t = @((New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME), (New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(5) -RepetitionInterval (New-TimeSpan -Hours 1) -RepetitionDuration (New-TimeSpan -Days 3650))); $s = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -StartWhenAvailable; Register-ScheduledTask -TaskName 'ExamEye Update' -Action $a -Trigger $t -Settings $s -Force -ErrorAction Stop | Out-Null"
 if errorlevel 1 (
   echo Could not register the hourly update task. ExamEye still works; updates will need a re-install.
 ) else (
