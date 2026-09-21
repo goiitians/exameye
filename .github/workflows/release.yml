@@ -1,0 +1,35 @@
+# Manual only: nothing is published on push or merge. The integration suite (real Chromium with
+# screen capture) is not run here; it stays a local pre-push check.
+name: Release
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - name: Stamp version 0.1.<run number> into the built manifest
+        run: |
+          V="0.1.${{ github.run_number }}"
+          node -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('manifest.json','utf8'));m.version=process.argv[1];fs.writeFileSync('manifest.json',JSON.stringify(m,null,2)+'\n')" "$V"
+          printf '%s\n' "$V" > version.txt
+          echo "VERSION=$V" >> "$GITHUB_ENV"
+      - run: node tools/build-installer.mjs
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PREV=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          if [ -n "$PREV" ]; then NOTES=$(git log --oneline "$PREV..HEAD"); else NOTES=$(git log --oneline -20); fi
+          gh release create "v$VERSION" dist/exameye-installer.zip version.txt --title "v$VERSION" --notes "$NOTES"
