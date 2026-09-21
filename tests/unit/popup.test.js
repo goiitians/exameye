@@ -5,7 +5,7 @@ import { installFakeChrome } from './fake-chrome.js';
 import { installFakeDom } from './fake-dom.js';
 
 const chrome = installFakeChrome();
-const dom = installFakeDom(['state', 'session', 'flush', 'errors', 'counts', 'options', 'desktop', 'flags']);
+const dom = installFakeDom(['state', 'session', 'flush', 'errors', 'counts', 'options', 'desktop', 'flags', 'version']);
 dom.options.hidden = true;
 const opened = [];
 chrome.runtime.openOptionsPage = async () => { opened.push(1); };
@@ -32,6 +32,7 @@ test('render: idle with nothing stored', async () => {
   assert.equal(dom.counts.textContent, '(no events)');
   assert.equal(dom.desktop.textContent, 'off');
   assert.equal(dom.flags.textContent, '0');
+  assert.equal(dom.version.textContent, '0.1.0', 'staff read the running version off the popup to confirm an update landed');
 });
 
 test('render shows the desktop line', async () => {
