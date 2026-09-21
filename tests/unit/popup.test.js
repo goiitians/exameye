@@ -13,7 +13,7 @@ const tick = () => new Promise((r) => setTimeout(r, 5));
 
 test('popup has the live-state slots and a module script', async () => {
   const html = await readFile(new URL('../../src/popup/popup.html', import.meta.url), 'utf8');
-  for (const id of ['state', 'session', 'flush', 'errors', 'counts', 'options', 'desktop', 'flags']) assert.match(html, new RegExp(`id="${id}"`), id);
+  for (const id of ['state', 'session', 'flush', 'errors', 'counts', 'options', 'desktop', 'flags', 'version']) assert.match(html, new RegExp(`id="${id}"`), id);
   assert.match(html, /<script type="module" src="popup.js"><\/script>/);
 });
 

@@ -19,8 +19,13 @@ Automatic updates
   when there is one and replaces the ExamEye folder only while Chrome is closed, so a running exam
   is never touched. The new version is live the next time Chrome starts. The ExamEye popup shows
   the running version. Log: <home>\ExamEye-updater\update.log (one line per run).
+  The updater owns <home>\ExamEye.new and <home>\ExamEye.old and deletes them; do not keep a backup under those names.
 
 Publish a new version (owner)
+  Once only, before the first release: GitHub > Settings > General > Danger zone > Change
+  visibility > Public. Machines download releases without a login; on a private repo every PC
+  logs "failed: cannot read version.txt" forever. Then, on one Windows PC with Chrome closed,
+  run the updater by hand (below) and confirm "updated" in update.log and the version in the popup.
   GitHub > Actions > Release > Run workflow (branch main). Wait for the green tick; the release
   v0.1.<number> appears under Releases. Machines pick it up within an hour of their next Chrome
   restart. Do not publish during exam hours. To check the updater on one PC right away:

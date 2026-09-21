@@ -30,6 +30,7 @@ try {
   $manifest = Join-Path $ext 'manifest.json'
   if (-not (Test-Path $manifest)) { Log 'failed: not installed'; exit 0 }
   $installed = VersionOf $manifest
+  if (-not $installed) { $installed = '0' }
   [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
   $tmp = Join-Path ([IO.Path]::GetTempPath()) ('exameye-update-' + [Guid]::NewGuid().ToString('N'))
   New-Item -ItemType Directory -Path $tmp | Out-Null
