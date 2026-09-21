@@ -14,9 +14,12 @@ test('build-installer writes the extension, both updater scripts and a zip into 
     execFileSync('node', ['tools/build-installer.mjs'], { cwd: ROOT, env: { ...process.env, EXAMEYE_DIST: out }, stdio: 'pipe' });
     const manifest = JSON.parse(await readFile(path.join(out, 'ExamEye/manifest.json'), 'utf8'));
     assert.equal(manifest.name, 'ExamEye');
-    const ps1 = await readFile(path.join(out, 'Update-ExamEye.ps1'), 'utf8');
-    assert.ok(ps1.startsWith('# ExamEye updater for Windows'));
-    assert.ok(!/[^\r]\n/.test(ps1), 'Windows reads the .ps1 with CRLF line endings');
+    for (const [f, head] of [['Update-ExamEye.cmd', '@echo off'], ['Update-ExamEye.vbs', "' ExamEye updater launcher"]]) {
+      const text = await readFile(path.join(out, f), 'utf8');
+      assert.ok(text.startsWith(head), `${f} starts with ${head}`);
+      assert.ok(!/[^\r]\n/.test(text), `Windows reads ${f} with CRLF line endings`);
+    }
+    await assert.rejects(stat(path.join(out, 'Update-ExamEye.ps1')), 'no PowerShell script ships: a Group Policy execution policy blocks .ps1 files');
     const sh = await stat(path.join(out, 'update-exameye.sh'));
     assert.ok(sh.mode & 0o111, 'the macOS updater must stay executable');
     assert.ok((await stat(`${out}.zip`)).size > 0);
