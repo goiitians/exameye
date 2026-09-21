@@ -58,7 +58,8 @@ Two scripts with identical logic, shipped at the installer root and copied by th
 - Windows: `Update-ExamEye.ps1`, run by a per-user Scheduled Task `ExamEye Update`
   (triggers: at logon, and every hour; action: `powershell -NoProfile -ExecutionPolicy Bypass -File
   <home>\ExamEye-updater\Update-ExamEye.ps1`). Registered with `Register-ScheduledTask` for the
-  current user, no elevation.
+  current user, no elevation, `MultipleInstances IgnoreNew` so an hourly run never overlaps a logon
+  run.
 - macOS: `update-exameye.sh`, run by a launchd agent `~/Library/LaunchAgents/in.exameye.update.plist`
   (`RunAtLoad` true, `StartInterval` 3600, stdout/stderr to the log below). Loaded with
   `launchctl bootstrap gui/$UID` (falls back to `launchctl load`).
@@ -69,17 +70,24 @@ Logic, in order; every exit writes one line to `<home>/ExamEye-updater/update.lo
 1. `installed` = `version` from `<home>/ExamEye/manifest.json`. Missing → `failed: not installed`.
 2. `latest` = body of `version.txt` from the base URL (default the GitHub URL above; a parameter
    `-BaseUrl` / env `EXAMEYE_UPDATE_URL` overrides it for tests). Unreachable → `failed: <reason>`.
+   Unreadable → `failed: cannot read version.txt`; blank → `failed: empty version.txt`. Windows
+   downloads it to a file: PowerShell 5.1 leaves `.Content` empty for `application/octet-stream`.
 3. Compare numerically per dot-separated field. Not newer → `up to date <installed>`.
 4. Chrome running (`chrome` or `msedge` process on Windows; `Google Chrome` or `Microsoft Edge` on
    macOS) → `skipped <latest>: chrome running`. The next hourly run retries.
 5. Download the zip to a fresh temp folder, extract, and require `ExamEye/manifest.json` inside with
    `version` equal to `latest` (otherwise `failed: bad archive`).
-6. Mirror `ExamEye/` from the extract over `<home>/ExamEye/`, deleting files that no longer exist,
-   **excluding `defaults.json`** (it carries the seat id typed at install; it is read once on first
-   install and must not be replaced). Windows: `robocopy /MIR /XF defaults.json`; macOS:
-   `rsync -a --delete --exclude defaults.json`.
-7. Copy the updater script from the extract over its own copy (so a fixed updater reaches machines
-   too), remove the temp folder, log `updated <installed> -> <latest>`.
+6. Stage: copy `ExamEye/` from the extract to `<home>/ExamEye.new` (Windows `robocopy /E`, macOS
+   `cp -R`), then copy the live `defaults.json` into it (it carries the seat id typed at install; it
+   is read once on first install and must not be replaced; a failed copy is `failed: defaults`).
+   Re-check Chrome (`skipped` if it started meanwhile). Swap by two renames: live → `ExamEye.old`,
+   `.new` → live; if the second rename fails the first is undone. A failure anywhere before the
+   swap leaves the live folder untouched; a run that died between the two renames is repaired at
+   the next run's start (live missing and `.old` present → rename back).
+7. Log `updated <installed> -> <latest>`, with ` (cleanup failed)` and/or ` (self-copy failed)`
+   appended when deleting `ExamEye.old` or copying the updater script from the extract over its own
+   copy fails (the self-copy is how a fixed updater reaches machines; on macOS it goes through a
+   temp name and a rename because bash may still be reading the file). Still exactly one line.
 
 Chrome loads the new files at its next start. An unpacked extension whose version changed fires
 `runtime.onInstalled` with reason `update`; the SW already handles that by calling `boot()` and
@@ -108,11 +116,10 @@ does not reseed `defaults.json` (that happens only on `install`).
 
 - Never swap while Chrome runs: the only rule that protects a live exam. Mixed-version sessions are
   impossible because the folder changes only between Chrome runs.
-- A bad or partial download cannot land: extraction and the manifest check happen in temp; the
-  mirror is the last step. If the mirror itself fails half-way (disk full, file locked by an
-  antivirus scan) the log says `failed: mirror`, and the next hourly run mirrors again from a fresh
-  download; the extension folder is self-healing as long as the next run succeeds before Chrome
-  starts. This window is accepted.
+- A bad or partial download cannot land: extraction and the manifest check happen in temp, the new
+  folder is staged next to the live one, and the live folder changes only by rename. A staging
+  failure (disk full, antivirus lock) logs `failed: mirror` and leaves the live folder untouched; the
+  next hourly run starts over from a fresh download.
 - GitHub unreachable: the PC keeps its version; the log shows why.
 - Rollback: re-run any older `exameye-installer.zip` by hand. The updater only moves forward
   (numeric compare), so the next hourly run does not undo a deliberate downgrade until a newer
