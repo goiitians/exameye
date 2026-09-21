@@ -32,4 +32,4 @@ jobs:
         run: |
           PREV=$(git describe --tags --abbrev=0 2>/dev/null || true)
           if [ -n "$PREV" ]; then NOTES=$(git log --oneline "$PREV..HEAD"); else NOTES=$(git log --oneline -20); fi
-          gh release create "v$VERSION" dist/exameye-installer.zip version.txt --title "v$VERSION" --notes "$NOTES"
+          gh release create "v$VERSION" dist/exameye-installer.zip version.txt --target "$GITHUB_SHA" --title "v$VERSION" --notes "$NOTES"
