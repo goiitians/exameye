@@ -29,7 +29,8 @@ newer() {
 [ -d "$EXT" ] || { [ -d "$OLD" ] && mv "$OLD" "$EXT"; }
 [ -f "$EXT/manifest.json" ] || { log 'failed: not installed'; exit 0; }
 installed=$(version_of "$EXT/manifest.json")
-latest=$(curl -fsSL --max-time 30 "$BASE_URL/version.txt" | tr -d '[:space:]') || { log 'failed: cannot read version.txt'; exit 0; }
+body=$(curl -fsSL --max-time 30 "$BASE_URL/version.txt") || { log 'failed: cannot read version.txt'; exit 0; }
+latest=$(printf '%s' "$body" | tr -d '[:space:]')
 [ -n "$latest" ] || { log 'failed: empty version.txt'; exit 0; }
 newer "$latest" "$installed" || { log "up to date $installed"; exit 0; }
 chrome_running && { log "skipped $latest: chrome running"; exit 0; }
@@ -45,10 +46,11 @@ got=$(version_of "$src/ExamEye/manifest.json")
 rm -rf "$NEW" "$OLD"
 cp -R "$src/ExamEye" "$NEW" || { log 'failed: mirror'; exit 0; }
 # defaults.json carries the seat id typed at install and is read once, on first install
-[ -f "$EXT/defaults.json" ] && cp "$EXT/defaults.json" "$NEW/defaults.json"
+if [ -f "$EXT/defaults.json" ]; then cp "$EXT/defaults.json" "$NEW/defaults.json" || { log 'failed: defaults'; exit 0; }; fi
 chrome_running && { log "skipped $latest: chrome running"; exit 0; }
 mv "$EXT" "$OLD" || { log 'failed: swap'; exit 0; }
 mv "$NEW" "$EXT" || { mv "$OLD" "$EXT"; log 'failed: swap'; exit 0; }
-log "updated $installed -> $latest"
-rm -rf "$OLD" || log 'failed: cleanup'
-cp "$src/update-exameye.sh" "$DIR/update-exameye.sh" || log 'failed: self-copy'
+note=''
+rm -rf "$OLD" || note="$note (cleanup failed)"
+{ cp "$src/update-exameye.sh" "$DIR/update-exameye.sh.tmp" && mv -f "$DIR/update-exameye.sh.tmp" "$DIR/update-exameye.sh"; } || note="$note (self-copy failed)"
+log "updated $installed -> $latest$note"

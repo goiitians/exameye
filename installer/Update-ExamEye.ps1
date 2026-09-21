@@ -50,13 +50,14 @@ try {
   & { $ErrorActionPreference = 'Continue'; robocopy (Join-Path $src 'ExamEye') $new /E /NFL /NDL /NJH /NJS /NP 2>$null } | Out-Null
   if ($LASTEXITCODE -ge 8) { Log 'failed: mirror'; exit 0 }
   # defaults.json carries the seat id typed at install and is read once, on first install
-  Copy-Item (Join-Path $ext 'defaults.json') (Join-Path $new 'defaults.json') -Force -ErrorAction SilentlyContinue
+  if (Test-Path (Join-Path $ext 'defaults.json')) { Copy-Item (Join-Path $ext 'defaults.json') (Join-Path $new 'defaults.json') -Force }
   if (ChromeRunning) { Log "skipped ${latest}: chrome running"; exit 0 }
   Rename-Item -Path $ext -NewName (Split-Path -Leaf $old)
   try { Rename-Item -Path $new -NewName (Split-Path -Leaf $ext) } catch { Rename-Item -Path $old -NewName (Split-Path -Leaf $ext); throw }
-  Log "updated $installed -> $latest"
-  try { Remove-Item -Recurse -Force $old } catch { Log (('failed: cleanup ' + $_.Exception.Message) -replace '\s+', ' ') }
-  try { Copy-Item (Join-Path $src 'Update-ExamEye.ps1') (Join-Path $dir 'Update-ExamEye.ps1') -Force } catch { Log (('failed: self-copy ' + $_.Exception.Message) -replace '\s+', ' ') }
+  $note = ''
+  try { Remove-Item -Recurse -Force $old } catch { $note += ' (cleanup failed)' }
+  try { Copy-Item (Join-Path $src 'Update-ExamEye.ps1') (Join-Path $dir 'Update-ExamEye.ps1') -Force } catch { $note += ' (self-copy failed)' }
+  Log "updated $installed -> $latest$note"
 } catch {
   Log (('failed: ' + $_.Exception.Message) -replace '\s+', ' ')
 } finally {
