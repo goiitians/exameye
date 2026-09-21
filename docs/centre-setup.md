@@ -10,6 +10,11 @@ Two routes; pick one per centre.
 - On each machine run the installer: it copies the extension to `<home>\ExamEye`, asks for the desk's seat ID, writes it into `ExamEye\defaults.json`, puts the folder path on the clipboard and opens `chrome://extensions`. Then Developer mode ON -> Load unpacked -> paste the path.
 - `defaults.json` next to `manifest.json` is read once, on first install, when no settings exist yet; the setup page opens by itself with those values. Later updates never overwrite saved settings. The centre's values live in `installer/defaults.json` in the repo.
 
+**GitHub release (same installer, no pen drive) and automatic updates**
+- Releases are published by hand: GitHub > Actions > Release > Run workflow on `main`. CI runs the unit tests, stamps version `0.1.<run number>`, builds the installer and attaches `exameye-installer.zip` + `version.txt` to release `v0.1.<run number>`. Nothing is published on a push.
+- Install from GitHub: download `exameye-installer.zip` from the newest release, extract, run the installer as above.
+- Both installers register an updater (Windows Scheduled Task `ExamEye Update`; macOS launchd agent `in.exameye.update`): at logon and hourly it fetches `version.txt`, and only when a newer version exists **and Chrome is closed** it swaps in the new `ExamEye/` folder by rename (keeping `defaults.json`). Log: `<home>/ExamEye-updater/update.log`. The popup shows the running version. Design: `docs/superpowers/specs/2026-09-21-auto-update-design.md`.
+
 **Unpacked copy (hand-installed, one machine at a time)**
 - Copy the ExamEye folder (the one containing `manifest.json`) somewhere it will not be moved or deleted, e.g. `C:\ExamEye` or `/opt/exameye`. Chrome loads it from that path on every start; moving it disables the extension.
 - Chrome: `chrome://extensions` -> Developer mode ON -> Load unpacked -> select the folder.

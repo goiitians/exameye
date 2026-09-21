@@ -12,6 +12,7 @@ async function render() {
   const { session = { state: 'IDLE' }, events = [], meta = {} } = await chrome.storage.local.get(['session', 'events', 'meta']);
   $('state').textContent = session.state;
   $('session').textContent = session.id || '-';
+  $('version').textContent = chrome.runtime.getManifest().version;
   $('flush').textContent = meta.lastFlushAt ? new Date(meta.lastFlushAt).toLocaleTimeString() : 'never';
   const errors = (meta.configErrors || []).map(e => `${e.field}: ${e.message}`);
   if (meta.lastFlushError) errors.push(`flush: ${meta.lastFlushError}`);

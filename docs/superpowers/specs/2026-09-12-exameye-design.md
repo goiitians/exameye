@@ -765,6 +765,12 @@ when no `config` exists yet, boots, and opens the options page; any other reason
 checkout without the file behaves as before. `tools/build-installer.mjs` places
 `installer/defaults.json` next to the manifest in the pen-drive installer.
 
+Self-update (2026-09-21): a manual GitHub release (`workflow_dispatch`, version `0.1.<run number>`
+stamped at build time) and a per-machine updater that replaces `<home>/ExamEye` only while Chrome
+is closed, keeping `defaults.json`. Full design and the updater's log contract:
+`docs/superpowers/specs/2026-09-21-auto-update-design.md`. The popup shows
+`runtime.getManifest().version` so staff can confirm which build a machine runs.
+
 `tick` also doubles as the boot marker: `ensureBoot()` runs at every SW start (module top level, not
 just `onInstalled`/`onStartup`) and treats a missing `tick` alarm as an enabled lifetime that never
 booted, running full `boot()` in that case.

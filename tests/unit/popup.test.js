@@ -5,7 +5,7 @@ import { installFakeChrome } from './fake-chrome.js';
 import { installFakeDom } from './fake-dom.js';
 
 const chrome = installFakeChrome();
-const dom = installFakeDom(['state', 'session', 'flush', 'errors', 'counts', 'options', 'desktop', 'flags']);
+const dom = installFakeDom(['state', 'session', 'flush', 'errors', 'counts', 'options', 'desktop', 'flags', 'version']);
 dom.options.hidden = true;
 const opened = [];
 chrome.runtime.openOptionsPage = async () => { opened.push(1); };
@@ -13,7 +13,7 @@ const tick = () => new Promise((r) => setTimeout(r, 5));
 
 test('popup has the live-state slots and a module script', async () => {
   const html = await readFile(new URL('../../src/popup/popup.html', import.meta.url), 'utf8');
-  for (const id of ['state', 'session', 'flush', 'errors', 'counts', 'options', 'desktop', 'flags']) assert.match(html, new RegExp(`id="${id}"`), id);
+  for (const id of ['state', 'session', 'flush', 'errors', 'counts', 'options', 'desktop', 'flags', 'version']) assert.match(html, new RegExp(`id="${id}"`), id);
   assert.match(html, /<script type="module" src="popup.js"><\/script>/);
 });
 
@@ -32,6 +32,7 @@ test('render: idle with nothing stored', async () => {
   assert.equal(dom.counts.textContent, '(no events)');
   assert.equal(dom.desktop.textContent, 'off');
   assert.equal(dom.flags.textContent, '0');
+  assert.equal(dom.version.textContent, '0.1.0', 'staff read the running version off the popup to confirm an update landed');
 });
 
 test('render shows the desktop line', async () => {
