@@ -4,6 +4,9 @@
 const QUOTA = 2;
 const WINDOW_MS = 1000;
 const recent = [];
+// Chrome refuses every tab call while a tab is being dragged; the drag ends within a second or two
+const DRAG_ATTEMPTS = 3;
+const DRAG_RETRY_MS = 500;
 
 async function throttle() {
   for (;;) {
@@ -15,7 +18,14 @@ async function throttle() {
 }
 
 export async function captureJpeg(windowId) {
-  await throttle();
-  const url = await chrome.tabs.captureVisibleTab(windowId, { format: 'jpeg', quality: 50 });
-  return url.slice(url.indexOf(',') + 1);
+  for (let attempt = 1; ; attempt++) {
+    await throttle();
+    try {
+      const url = await chrome.tabs.captureVisibleTab(windowId, { format: 'jpeg', quality: 50 });
+      return url.slice(url.indexOf(',') + 1);
+    } catch (e) {
+      if (attempt >= DRAG_ATTEMPTS || !/cannot be edited right now/.test(String(e?.message || e))) throw e;
+      await new Promise((r) => setTimeout(r, DRAG_RETRY_MS));
+    }
+  }
 }

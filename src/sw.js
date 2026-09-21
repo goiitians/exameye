@@ -219,19 +219,24 @@ async function takeShots(events, pre, fresh, examWindowId) {
         preFile = unique(shotFile(ev.t, ev.name));
         shots[preFile] = pre.b64;
         added.push({ file: preFile, b64: pre.b64 });
-        last = { at: ev.t, file: preFile, tabId: pre.tabId };
+        last = { at: ev.t, capturedAt: ev.t, file: preFile, tabId: pre.tabId };
       }
       ev.shot = preFile;
       continue;
     }
     let subject = await shotSubject(ev, examWindowId, meta.desktop?.holderWindowId);
-    const visible = () => !TAB_BOUND.has(ev.name) || subject.tabId === ev.tabId;
+    const bound = TAB_BOUND.has(ev.name);
+    const visible = () => !bound || subject.tabId === ev.tabId;
+    // reuse only a shot of the same tab, and for a tab-bound event one taken after the event itself
+    // (a navigation makes every earlier image of that tab stale, and a shot taken later than the
+    // commit shows this page even if the candidate has flipped back since); a negative delta means
+    // the clock was set back and the previous shot is not "2 s old", capture again
+    const reusable = last.file && last.tabId != null && ev.t >= last.at && ev.t - last.at < SHOT_GAP_MS
+      && (bound ? last.tabId === ev.tabId && last.capturedAt > ev.t : last.tabId === subject.tabId);
+    if (reusable) { ev.shot = last.file; continue; }
     // a capture refused at listener time (quota, chrome:// page) is retried here only while the
     // switched-to tab is still the visible one; after a flip back, a fresh capture would show the exam tab
     if (!visible()) { ev.data.shotError = pre?.error ?? 'tab no longer visible'; continue; }
-    // reuse only a shot of the same tab; a negative delta means the clock was set back and the
-    // previous shot is not "2 s old", capture again
-    if (last.file && last.tabId != null && last.tabId === subject.tabId && ev.t >= last.at && ev.t - last.at < SHOT_GAP_MS) { ev.shot = last.file; continue; }
     try {
       // the subject is what is visible after the wait: a tab flipped during it must not be filed under the old tab id
       if (NAV_BORN.has(ev.name)) {
@@ -244,7 +249,7 @@ async function takeShots(events, pre, fresh, examWindowId) {
       shots[file] = b64;
       added.push({ file, b64 });
       ev.shot = file;
-      last = { at: ev.t, file, tabId: subject.tabId };
+      last = { at: ev.t, capturedAt: now(), file, tabId: subject.tabId };
     } catch (e) {
       ev.data.shotError = String(e?.message || e);
     }

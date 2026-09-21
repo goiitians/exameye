@@ -441,14 +441,20 @@ alarm (`windows.getAll`) reconciles anything missed (e.g. restored while the SW 
   their image must show the named tab (`subject.tabId === event.tabId`, checked before and, for a
   paint-waited PARALLEL_PAGE, again after the wait) or the event records `shotError` ("tab no longer
   visible", or the listener's refusal), because a fresh capture after a flip back would show the exam
-  tab under the parallel page's name. Coalescing also guarantees unique file names (one per second at most). A clock set back (§14 item 16) breaks both assumptions, so a negative `now − at` captures afresh and a name already present in `shots` gets a `-2`, `-3`… suffix before `.jpg`; `tailshots.decide` treats a negative gap as elapsed for the same reason. `shots` and `meta.lastShot` are written in the same batched `storage.set` as the event (§7), never ahead of it.
+  tab under the parallel page's name. For a tab-bound event the reuse key is the named tab, and
+  `meta.lastShot.capturedAt` must be later than the event's own time: a navigation makes every earlier
+  image of that tab stale, while a shot taken after the commit (a burst of history-state commits on one
+  page yields one capture) shows this page even if the candidate has flipped back since.
+- **Tab drag:** Chrome refuses every tab call while a tab is being dragged ("Tabs cannot be edited
+  right now"); `captureJpeg` retries such a refusal twice, 500 ms apart, then reports it. Coalescing also guarantees unique file names (one per second at most). A clock set back (§14 item 16) breaks both assumptions, so a negative `now − at` captures afresh and a name already present in `shots` gets a `-2`, `-3`… suffix before `.jpg`; `tailshots.decide` treats a negative gap as elapsed for the same reason. `shots` and `meta.lastShot` are written in the same batched `storage.set` as the event (§7), never ahead of it.
 - File name: `screenshots/<YYYYMMDD-HHMMSS>_<EVENT>.jpg` (`ids.shotFile`), local time.
 - Failure (chrome:// pages, minimised window, throttling): `event.shot=null`,
   `event.data.shotError=<message>`; the event is still recorded, no placeholder image is made up,
   and both summaries say so: `summary.txt` adds `Not captured: n` after the screenshot count with
   one line per event (time, event, URL, reason) and the HTML timeline cell reads `not captured:
   <reason>`. Chrome's activeTab refusal (chrome:// and other extensions' pages) is rendered as
-  "Chrome does not let extensions capture this page" (`describeShotError`).
+  "Chrome does not let extensions capture this page" (`describeShotError`; Chrome uses two wordings,
+  the activeTab one and "Cannot access contents of url", depending on whether the tab's URL is known yet).
 - The base64 body is stored in `shots[file]` in storage.local (needs `unlimitedStorage`; ~15 MB
   worst case) so `summary.html` can embed every screenshot at session end, and is enqueued as a
   file write immediately.
