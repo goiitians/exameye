@@ -13,8 +13,8 @@ export function needsShot(ev) {
   return SHOT_EVENTS.has(ev.name);
 }
 
-// Chrome refuses chrome:// and other extensions' pages with an activeTab message that means nothing to staff
-export const describeShotError = (err) => /activeTab/.test(err) ? 'Chrome does not let extensions capture this page (chrome:// or another extension)' : String(err);
+// Chrome refuses chrome:// and other extensions' pages with one of two messages that mean nothing to staff
+export const describeShotError = (err) => /activeTab|Cannot access contents of url/.test(err) ? 'Chrome does not let extensions capture this page (chrome:// or another extension)' : String(err);
 
 export const DESKTOP_FRAME_EVENTS = new Set(['FOCUS_LEFT_CHROME', 'FOCUS_RETURNED', 'PERIODIC', 'DESKTOP_FRAME']);
 

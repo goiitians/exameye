@@ -124,22 +124,6 @@ test('a capture refused at activation time keeps the error when the candidate ha
   }
 });
 
-test('a commit on the away tab after the candidate flipped back is an error, never a shot of the exam tab', async () => {
-  activate(other);
-  await sw.dispatch({ kind: 'TAB_ACTIVATED', tabId: 2, windowId: 3, url: 'https://g.x/', title: 'G', incognito: false, at: t0 + 40000 });
-  // the flip back has happened on screen but its TAB_ACTIVATED has not been processed yet
-  activate(exam);
-  const before = captures.length;
-  await sw.dispatch({ kind: 'NAV', tabId: 2, windowId: 3, url: 'https://g.x/search?q=late', incognito: false, at: t0 + 41000 });
-  const ev = (await get('events')).events.at(-1);
-  assert.equal(ev.name, 'PARALLEL_PAGE');
-  assert.equal(ev.data.active, true);
-  assert.equal(ev.shot, null);
-  assert.equal(ev.data.shotError, 'tab no longer visible');
-  assert.equal(captures.length, before);
-  await sw.dispatch({ kind: 'TAB_ACTIVATED', tabId: 1, windowId: 3, url: 'https://e.x/start', title: 'Exam', incognito: false, at: t0 + 41500 });
-});
-
 test('two events on the same tab within 2 s still share one file', async () => {
   const before = captures.length;
   await sw.dispatch({ kind: 'PERIODIC', at: t0 + 10000 });
@@ -195,4 +179,44 @@ test('a tab switch that is undone before the queue reaches it is still captured 
     chrome.tabs.responder = null;
     activate(exam);
   }
+});
+
+test('a commit on the away tab after the candidate flipped back is an error, never a shot of the exam tab', async () => {
+  activate(other);
+  await sw.dispatch({ kind: 'TAB_ACTIVATED', tabId: 2, windowId: 3, url: 'https://g.x/', title: 'G', incognito: false, at: Date.now() });
+  // the flip back has happened on screen but its TAB_ACTIVATED has not been processed yet
+  activate(exam);
+  const before = captures.length;
+  await sw.dispatch({ kind: 'NAV', tabId: 2, windowId: 3, url: 'https://g.x/search?q=late', incognito: false, at: Date.now() + 1 });
+  const ev = (await get('events')).events.at(-1);
+  assert.equal(ev.name, 'PARALLEL_PAGE');
+  assert.equal(ev.data.active, true);
+  assert.equal(ev.shot, null, 'the switch shot predates the navigation: it shows the old page');
+  assert.equal(ev.data.shotError, 'tab no longer visible');
+  assert.equal(captures.length, before);
+  await sw.dispatch({ kind: 'TAB_ACTIVATED', tabId: 1, windowId: 3, url: 'https://e.x/start', title: 'Exam', incognito: false, at: Date.now() + 2 });
+});
+
+test('commits of the same tab that arrive while the first one is being captured reuse its shot, even after a flip back', async () => {
+  activate(other);
+  await sw.dispatch({ kind: 'TAB_ACTIVATED', tabId: 2, windowId: 3, url: 'https://g.x/', title: 'G', incognito: false, at: Date.now() });
+  other.status = 'loading';
+  setTimeout(() => { other.status = 'complete'; }, 400);
+  const before = captures.length;
+  const first = sw.dispatch({ kind: 'NAV', tabId: 2, windowId: 3, url: 'https://g.x/search?q=a', incognito: false, at: Date.now() + 1 });
+  await wait(50);
+  const second = sw.dispatch({ kind: 'NAV', tabId: 2, windowId: 3, url: 'https://g.x/search?q=a&x=1', incognito: false, at: Date.now() });
+  const third = sw.dispatch({ kind: 'NAV', tabId: 2, windowId: 3, url: 'https://g.x/search?q=a&x=2', incognito: false, at: Date.now() });
+  await first;
+  activate(exam); // flipped back before the queue reaches the second commit
+  await Promise.all([second, third]);
+  const { events, shots } = await get(['events', 'shots']);
+  const pages = events.filter(e => e.name === 'PARALLEL_PAGE' && e.data.trigger === 'committed').slice(-3);
+  assert.equal(captures.length, before + 1, 'one capture for the burst');
+  assert.equal(shots[pages[0].shot], 'TAB2');
+  assert.equal(pages[1].shot, pages[0].shot, 'captured after this commit happened, so it shows this page');
+  assert.equal(pages[2].shot, pages[0].shot);
+  assert.equal(pages[1].data.shotError, undefined);
+  delete other.status;
+  await sw.dispatch({ kind: 'TAB_ACTIVATED', tabId: 1, windowId: 3, url: 'https://e.x/start', title: 'Exam', incognito: false, at: Date.now() + 1 });
 });

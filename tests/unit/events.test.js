@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { needsShot, needsDesktopFrame, makeEvent } from '../../src/core/events.js';
+import { needsShot, needsDesktopFrame, makeEvent, describeShotError } from '../../src/core/events.js';
 
 test('needsShot follows the catalogue', () => {
   assert.equal(needsShot({ name: 'TAB_SWITCH', data: {} }), true);
@@ -23,6 +23,13 @@ test('needsShot follows the catalogue', () => {
   assert.equal(needsShot({ name: 'MAX_TIME_REACHED', data: {} }), true);
   assert.equal(needsShot({ name: 'SCREEN_CHANGED', data: {} }), true);
   assert.equal(needsShot({ name: 'DRAG', data: {} }), true);
+});
+
+test('describeShotError turns both of Chrome\'s refusals for its own pages into one readable line', () => {
+  const readable = 'Chrome does not let extensions capture this page (chrome:// or another extension)';
+  assert.equal(describeShotError("The 'activeTab' permission is not in effect because this extension has not been in invoked."), readable);
+  assert.equal(describeShotError('Cannot access contents of url "". Extension manifest must request permission to access this host.'), readable);
+  assert.equal(describeShotError('tab no longer visible'), 'tab no longer visible');
 });
 
 test('needsShot true for the four DESKTOP_CAPTURE_* events, false for DESKTOP_FRAME', () => {

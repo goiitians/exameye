@@ -37,6 +37,28 @@ test('captureJpeg never issues more than two captures within one second (Chrome\
   for (let i = 2; i < at.length; i++) assert.ok(at[i] - at[i - 2] >= 1000, `call ${i} came ${at[i] - at[i - 2]} ms after call ${i - 2}`);
 });
 
+test('captureJpeg retries a capture Chrome refuses during a tab drag, then gives up', async () => {
+  const real = chrome.tabs.captureVisibleTab;
+  let calls = 0;
+  chrome.tabs.captureVisibleTab = async () => { calls++; if (calls < 3) throw new Error('Tabs cannot be edited right now (user may be dragging a tab).'); return 'data:image/jpeg;base64,OK'; };
+  const t0 = Date.now();
+  try { assert.equal(await captureJpeg(3), 'OK'); } finally { chrome.tabs.captureVisibleTab = real; }
+  assert.equal(calls, 3);
+  assert.ok(Date.now() - t0 >= 1000, `two retries 500 ms apart, took ${Date.now() - t0} ms`);
+  calls = 0;
+  chrome.tabs.captureVisibleTab = async () => { calls++; throw new Error('Tabs cannot be edited right now (user may be dragging a tab).'); };
+  try { await assert.rejects(captureJpeg(3), /cannot be edited/); } finally { chrome.tabs.captureVisibleTab = real; }
+  assert.equal(calls, 3, 'bounded: three attempts, then the error is reported');
+});
+
+test('captureJpeg does not retry other refusals', async () => {
+  const real = chrome.tabs.captureVisibleTab;
+  let calls = 0;
+  chrome.tabs.captureVisibleTab = async () => { calls++; throw new Error('Cannot access contents of url "". Extension manifest must request permission to access this host.'); };
+  try { await assert.rejects(captureJpeg(3), /Cannot access/); } finally { chrome.tabs.captureVisibleTab = real; }
+  assert.equal(calls, 1);
+});
+
 test('captureJpeg strips the data: prefix', async () => {
   assert.equal(await captureJpeg(3), '/9j/FAKE');
 });
