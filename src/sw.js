@@ -31,6 +31,9 @@ const FOCUS_SETTLE_MS = 500;
 // arm/disarm and a commit on the tab the candidate is looking at fire at onCommitted, before the
 // new page has painted; without a wait the shot shows the previous page
 const NAV_BORN = new Set(['SESSION_ARMED', 'SESSION_DISARMED', 'RESULT_PAGE', 'PARALLEL_PAGE']);
+// Read by installer/Update-ExamEye.cmd and update-exameye.sh from <home>/Downloads: the updater
+// may swap the extension folder under a running Chrome only while the session is IDLE.
+const STATE_FILE = 'ExamEye-updater/state.txt';
 const HOLDER_KINDS = new Set(['NAV', 'TAB_ACTIVATED', 'WINDOW_CREATED', 'WINDOW_REMOVED']);
 // events about another tab: the image must show that tab or nothing (a shot of the exam tab under this name is worse than none)
 const TAB_BOUND = new Set(['TAB_SWITCH', 'PARALLEL_PAGE']);
@@ -80,11 +83,44 @@ async function paintBadge(session, events) {
   return setBadge(String(flagCount(tally(events).counts)), BADGE_COLOR);
 }
 
+async function writeState(state) {
+  try {
+    await writeFile(STATE_FILE, dataUrl('text/plain', toBase64(`${state}\n`)));
+    await store.patchMeta({ markerState: state });
+  } catch (e) { await store.patchMeta({ lastError: `${new Date().toISOString()} state marker: ${e?.message || e}` }); }
+}
+
+async function writeStateNow() {
+  const { session } = await store.get('session');
+  await writeState(session?.state ?? 'IDLE');
+}
+
+// A refused write (download blocked, disk full) would otherwise leave a stale IDLE on disk for
+// the whole exam — exactly the file the updater trusts.
+async function resyncStateNow() {
+  const { session, meta = {} } = await store.get(['session', 'meta']);
+  const state = session?.state ?? 'IDLE';
+  if (meta.markerState !== state) await writeState(state);
+}
+
+// The updater (installer/Update-ExamEye.cmd, update-exameye.sh) swaps the folder under a running
+// Chrome; an unpacked extension keeps serving the old worker until it reloads itself, and only
+// an idle one with nothing left to write may.
+async function reloadIfUpdatedNow() {
+  let disk;
+  try { disk = (await (await fetch(chrome.runtime.getURL('manifest.json'))).json()).version; } catch { return; }
+  if (disk === chrome.runtime.getManifest().version) return;
+  const { session, meta = {}, pending = {} } = await store.get(['session', 'meta', 'pending']);
+  if ((session && session.state !== 'IDLE') || meta.pendingEnd || Object.keys(pending).length) return;
+  chrome.runtime.reload();
+}
+
 async function dispatchNow(input) {
   const cfg = await loadConfig();
   if (!cfg) return;
   const st = await store.get(['session', 'events', 'lines', 'lastHash', 'meta']);
   let session = st.session || initial();
+  const prevState = session.state;
   let { events = [], lines = [], lastHash = GENESIS } = st;
   const meta = st.meta || {};
   if (HOLDER_KINDS.has(input.kind) && (input.url === holderUrl() || input.windowId === meta.desktop?.holderWindowId)) return;
@@ -148,6 +184,10 @@ async function dispatchNow(input) {
     Object.assign(batch, { events: [], lines: [], shots: {}, meta: { ...batch.meta, pendingEnd } });
   }
   await store.set(batch);
+  if (r.session.state !== prevState) {
+    await writeState(r.session.state);
+    if (r.session.state === 'IDLE') enqueue(reloadIfUpdatedNow);
+  }
   if (newEvents.length || endEffect) await paintBadge(r.session, endEffect ? [] : events);
   await runEffects(r.effects, cfg, pendingEnd);
   if (newEvents.length) await flushNow();
@@ -440,6 +480,8 @@ export async function tick() {
   const examTabPresent = session && session.state !== 'IDLE' && (await getTab(session.examTabId)) !== null;
   await dispatch({ kind: 'TICK', at: now(), windows, examTabPresent });
   await flush();
+  await enqueue(resyncStateNow);
+  await enqueue(reloadIfUpdatedNow);
 }
 
 // One queue step, enqueued synchronously by the onStartup listener: restored tabs' onCommitted
@@ -521,13 +563,14 @@ async function installed(d) {
   const reason = d?.reason;
   if (reason === 'install') await seedDefaults();
   await boot();
+  await enqueue(writeStateNow);
   if (reason === 'install') await chrome.runtime.openOptionsPage();
 }
 
 eraseOwnCompleted();
 ensureBoot();
 chrome.runtime.onInstalled.addListener(installed);
-chrome.runtime.onStartup.addListener(() => { recover(); return boot(); });
+chrome.runtime.onStartup.addListener(() => { recover(); enqueue(writeStateNow); return boot(); });
 chrome.storage.onChanged.addListener((changes) => {
   if (!changes.config) return;
   applyConfig();

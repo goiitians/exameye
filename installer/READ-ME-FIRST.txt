@@ -17,21 +17,31 @@ Get this folder from GitHub instead of a pen drive
 
 Automatic updates
   The installer registers a job that runs at logon and once an hour. It downloads a newer release
-  when there is one and replaces the ExamEye folder only while Chrome is closed, so a running exam
-  is never touched. The new version is live the next time Chrome starts. The ExamEye popup shows
-  the running version. Log: <home>\ExamEye-updater\update.log (one line per run).
+  when there is one and replaces the ExamEye folder only while Chrome is closed or while ExamEye
+  is idle (no exam armed or closing), so a running exam is never touched. ExamEye reports its
+  state in <home>\Downloads\ExamEye-updater\state.txt (IDLE, ARMED or CLOSING); an idle ExamEye
+  reloads itself onto the new version within a minute, otherwise right after the exam ends. The
+  ExamEye popup shows the running version. Log: <home>\ExamEye-updater\update.log (one line per
+  run; "skipped ...: chrome running (ARMED)" means it is waiting for the exam to end).
   The updater owns <home>\ExamEye.new and <home>\ExamEye.old and deletes them; do not keep a backup under those names.
+  A log line that stays at "skipped ...: chrome running (no state)" while Chrome is open means
+  Chrome's Downloads folder is redirected (for example by OneDrive), so the marker is never found
+  and the updater waits for Chrome to be closed.
 
 Publish a new version (owner)
   Once only, before the first release: GitHub > Settings > General > Danger zone > Change
-  visibility > Public. Machines download releases without a login; on a private repo every PC
-  logs "failed: cannot read version.txt" forever. Then, on one Windows PC with Chrome closed,
-  run the updater by hand (below) and confirm "updated" in update.log and the version in the popup.
-  GitHub > Actions > Release > Run workflow (branch main). Wait for the green tick; the release
-  v0.1.<number> appears under Releases. Machines pick it up within an hour of their next Chrome
-  restart. Do not publish during exam hours. To check the updater on one PC right away:
-  close Chrome, then double-click %USERPROFILE%\ExamEye-updater\Update-ExamEye.cmd
-  and read the last line of %USERPROFILE%\ExamEye-updater\update.log.
+  visibility > Public. Machines download releases without a login; on a private repo every PC logs
+  "failed: cannot read version.txt" forever. Then, with Chrome open and the popup showing IDLE,
+  run the updater by hand (below) and confirm "updated" in update.log and the version in the
+  popup. GitHub > Actions > Release > Run workflow (branch main). Wait for the green tick; the
+  release v0.1.<number> appears under Releases. Machines pick it up within the hour while ExamEye
+  is idle (popup shows IDLE), otherwise right after the exam ends; a PC whose Chrome is closed
+  picks it up at the next logon or hourly run. Do not publish during exam hours. To check the
+  updater on one PC right away: with Chrome open and the popup showing IDLE, double-click
+  %USERPROFILE%\ExamEye-updater\Update-ExamEye.cmd, read the last line of
+  %USERPROFILE%\ExamEye-updater\update.log ("updated <old> -> <new>"), and within a minute the
+  popup shows the new version. If the line reads "skipped ...: chrome running (ARMED)", an exam is
+  running; wait for it to end.
   Windows needs curl.exe and tar.exe, present since Windows 10 version 1803.
 
 Install on a Windows machine

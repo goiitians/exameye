@@ -5,6 +5,8 @@ function evt() {
 
 const yieldTick = () => new Promise((r) => setTimeout(r, 0));
 
+const downloadsChanged = evt();
+
 export function installFakeChrome() {
   const store = {};
   const c = {
@@ -12,6 +14,7 @@ export function installFakeChrome() {
       id: 'fake-ext-id', onStartup: evt(), onInstalled: evt(), onMessage: evt(),
       getURL: (p) => 'chrome-extension://fake-ext-id/' + p,
       getManifest: () => ({ version: '0.1.0' }),
+      reloads: 0, reload() { c.runtime.reloads += 1; },
       optionsOpened: 0, async openOptionsPage() { c.runtime.optionsOpened += 1; },
       sent: [], responder: null, ports: [], onConnect: evt(),
       connect(info) {
@@ -102,7 +105,7 @@ export function installFakeChrome() {
       async search(q) { return c.downloads.items.filter(i => q.id === undefined || i.id === q.id); },
       async erase(q) { c.downloads.erased.push(q.id); return [q.id]; },
       async setUiOptions(o) { c.downloads.uiOptions = o; },
-      onCreated: evt(), onChanged: evt(),
+      onCreated: evt(), onChanged: downloadsChanged,
     },
     scripting: {
       registered: [],

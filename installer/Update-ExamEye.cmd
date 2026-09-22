@@ -2,7 +2,7 @@
 rem ExamEye updater for Windows. Plain batch on purpose: a Group Policy execution policy blocks every
 rem PowerShell script file on managed PCs. Runs hourly (task "ExamEye Update") and at logon (Startup
 rem entry), both through Update-ExamEye.vbs so no window appears. Swaps the extension folder only while
-rem Chrome is closed, so a running exam never sees mixed files. Log: %USERPROFILE%\ExamEye-updater\update.log
+rem Chrome is closed or ExamEye's own marker says its session is IDLE, so a running exam never sees mixed files. Log: %USERPROFILE%\ExamEye-updater\update.log
 setlocal EnableExtensions DisableDelayedExpansion
 set "BASE=%EXAMEYE_UPDATE_URL%"
 if "%BASE%"=="" set "BASE=https://github.com/goiitians/exameye/releases/latest/download"
@@ -10,6 +10,7 @@ set "EXT=%USERPROFILE%\ExamEye"
 set "NEW=%EXT%.new"
 set "OLD=%EXT%.old"
 set "DIR=%USERPROFILE%\ExamEye-updater"
+set "STATE=%USERPROFILE%\Downloads\ExamEye-updater\state.txt"
 set "LOG=%DIR%\update.log"
 set "TMPD=%TEMP%\exameye-update-%RANDOM%%RANDOM%"
 if not exist "%DIR%" mkdir "%DIR%"
@@ -30,7 +31,8 @@ set "LATEST="
 for /f "usebackq delims=" %%l in ("%TMPD%\version.txt") do if not defined LATEST set "LATEST=%%l"
 if not defined LATEST (call :log "failed: empty version.txt" & goto :cleanup)
 if "%LATEST%"=="%INSTALLED%" (call :log "up to date %INSTALLED%" & goto :cleanup)
-call :chrome && (call :log "skipped %LATEST%: chrome running" & goto :cleanup)
+call :gate
+if defined SKIP (call :log "skipped %LATEST%: chrome running (%SKIP%)" & goto :cleanup)
 curl -fsSL --max-time 300 -o "%TMPD%\exameye-installer.zip" "%BASE%/exameye-installer.zip" 2>nul || (call :log "failed: download" & goto :cleanup)
 tar -xf "%TMPD%\exameye-installer.zip" -C "%TMPD%" 2>nul || (call :log "failed: unzip" & goto :cleanup)
 set "SRC=%TMPD%\exameye-installer"
@@ -44,7 +46,8 @@ robocopy "%SRC%\ExamEye" "%NEW%" /MIR /R:2 /W:2 /NFL /NDL /NJH /NJS /NP >nul
 if errorlevel 8 (call :log "failed: mirror" & goto :cleanup)
 rem defaults.json carries the seat id typed at install and is read once, on first install
 if exist "%EXT%\defaults.json" copy /Y "%EXT%\defaults.json" "%NEW%\defaults.json" >nul || (call :log "failed: defaults" & goto :cleanup)
-call :chrome && (call :log "skipped %LATEST%: chrome running" & goto :cleanup)
+call :gate
+if defined SKIP (call :log "skipped %LATEST%: chrome running (%SKIP%)" & goto :cleanup)
 ren "%EXT%" "ExamEye.old" 2>nul || (call :log "failed: swap" & goto :cleanup)
 ren "%NEW%" "ExamEye" 2>nul || (ren "%OLD%" "ExamEye" & call :log "failed: swap" & goto :cleanup)
 set "NOTE="
@@ -83,6 +86,17 @@ if defined V_ set "V_=%V_:,=%"
 if defined V_ set "V_=%V_: =%"
 endlocal & set "%~2=%V_%"
 goto :eof
+
+rem SKIP is empty when the swap may go ahead: no browser running, or the extension's marker says IDLE
+:gate
+set "SKIP="
+call :chrome || exit /b 0
+set "SKIP=no state"
+if not exist "%STATE%" exit /b 0
+for /f "usebackq delims=" %%l in ("%STATE%") do (set "SKIP=%%l" & goto :gateread)
+:gateread
+if "%SKIP%"=="IDLE" set "SKIP="
+exit /b 0
 
 :chrome
 tasklist /FI "IMAGENAME eq chrome.exe" /NH 2>nul | find /I "chrome.exe" >nul && exit /b 0
