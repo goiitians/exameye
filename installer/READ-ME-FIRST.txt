@@ -27,14 +27,18 @@ Automatic updates
 
 Publish a new version (owner)
   Once only, before the first release: GitHub > Settings > General > Danger zone > Change
-  visibility > Public. Machines download releases without a login; on a private repo every PC
-  logs "failed: cannot read version.txt" forever. Then, on one Windows PC with Chrome open and ExamEye idle,
-  run the updater by hand (below) and confirm "updated" in update.log and the version in the popup.
-  GitHub > Actions > Release > Run workflow (branch main). Wait for the green tick; the release
-  v0.1.<number> appears under Releases. Machines pick it up within an hour of their next Chrome
-  restart. Do not publish during exam hours. To check the updater on one PC right away:
-  close Chrome, then double-click %USERPROFILE%\ExamEye-updater\Update-ExamEye.cmd
-  and read the last line of %USERPROFILE%\ExamEye-updater\update.log.
+  visibility > Public. Machines download releases without a login; on a private repo every PC logs
+  "failed: cannot read version.txt" forever. Then, with Chrome open and the popup showing IDLE,
+  run the updater by hand (below) and confirm "updated" in update.log and the version in the
+  popup. GitHub > Actions > Release > Run workflow (branch main). Wait for the green tick; the
+  release v0.1.<number> appears under Releases. Machines pick it up within the hour while ExamEye
+  is idle (popup shows IDLE), otherwise right after the exam ends; a PC whose Chrome is closed
+  picks it up at the next logon or hourly run. Do not publish during exam hours. To check the
+  updater on one PC right away: with Chrome open and the popup showing IDLE, double-click
+  %USERPROFILE%\ExamEye-updater\Update-ExamEye.cmd, read the last line of
+  %USERPROFILE%\ExamEye-updater\update.log ("updated <old> -> <new>"), and within a minute the
+  popup shows the new version. If the line reads "skipped ...: chrome running (ARMED)", an exam is
+  running; wait for it to end.
   Windows needs curl.exe and tar.exe, present since Windows 10 version 1803.
 
 Install on a Windows machine
