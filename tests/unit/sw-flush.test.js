@@ -21,10 +21,11 @@ test('boot suppresses the download UI and erases own completed downloads', async
 test('every event flushes log.txt and new screenshots under <subfolder>/<sessionId>/', async () => {
   await sw.dispatch({ kind: 'NAV', tabId: 1, windowId: 3, url: 'https://e.x/start', at: 1000 });
   const { session, pending, meta } = await get(null);
-  const names = chrome.downloads.calls.map(c => c.filename);
+  const files = chrome.downloads.calls.filter(c => c.filename !== 'ExamEye-updater/state.txt');
+  const names = files.map(c => c.filename);
   assert.deepEqual(names, [`ExamEye/${session.id}/log.txt`, `ExamEye/${session.id}/screenshots/${session.id.slice(0, 15)}_SESSION_ARMED.jpg`]);
-  assert.match(decode(chrome.downloads.calls[0].url), /^# ExamEye session .*\n.* SESSION_ARMED .*\n$/);
-  assert.equal(chrome.downloads.calls[1].url, 'data:image/jpeg;base64,/9j/FAKE');
+  assert.match(decode(files[0].url), /^# ExamEye session .*\n.* SESSION_ARMED .*\n$/);
+  assert.equal(files[1].url, 'data:image/jpeg;base64,/9j/FAKE');
   assert.deepEqual(pending, {});
   assert.equal(typeof meta.lastFlushAt, 'number');
   assert.equal(meta.lastFlushError, null);
