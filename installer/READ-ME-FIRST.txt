@@ -24,6 +24,9 @@ Automatic updates
   ExamEye popup shows the running version. Log: <home>\ExamEye-updater\update.log (one line per
   run; "skipped ...: chrome running (ARMED)" means it is waiting for the exam to end).
   The updater owns <home>\ExamEye.new and <home>\ExamEye.old and deletes them; do not keep a backup under those names.
+  A log line that stays at "skipped ...: chrome running (no state)" while Chrome is open means
+  Chrome's Downloads folder is redirected (for example by OneDrive), so the marker is never found
+  and the updater waits for Chrome to be closed.
 
 Publish a new version (owner)
   Once only, before the first release: GitHub > Settings > General > Danger zone > Change

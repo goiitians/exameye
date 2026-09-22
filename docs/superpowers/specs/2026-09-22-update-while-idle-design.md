@@ -85,7 +85,8 @@ boots the worker and writes the marker; the popup then shows the new version.
 |---|---|
 | Chrome crashed while ARMED; marker says ARMED | Updater waits; Chrome start rewrites marker (onStartup) and swap follows within the hour |
 | Session arms during the download | Second gate check before the renames skips; retry next hour |
-| Session arms between the swap and the reload check (<=30 s) | Old worker keeps running with new files on disk until IDLE; the reload then happens. Accepted window |
+| Session arms between the swap and the reload check (<=30 s) | Old worker keeps running with new files on disk until IDLE; the reload then happens. Accepted window. An unpacked extension serves popup, options, holder page and the registered content script from disk on demand, so a session in this window runs the new content script/popup/holder against the old worker — the worker's message protocol with those pages must stay compatible between consecutive releases (release rule, not enforced by code) |
+| Dispatch enqueued between the reload check's storage read and the worker terminating | Lost with the worker; if it was the arming NAV, arming happens on the next start-URL or exam-URL navigation. Millisecond window, accepted |
 | Rename fails while Chrome holds a file open (Windows, unverified) | `failed: swap`, live folder untouched, retry next hour. Must be verified on the Windows PC at the next release; if it fails there, the swap technique is a follow-up |
 | Marker write fails (download refused) | `meta.lastError` set; updater uses the Chrome-closed rule |
 | Old extension (no marker ever written) | Updater uses the Chrome-closed rule |

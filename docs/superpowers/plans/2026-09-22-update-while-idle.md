@@ -359,6 +359,89 @@ git commit -m "feat(sw): reload onto a swapped extension folder when IDLE with n
 
 ---
 
+### Task 2b: Retry a refused marker write on the next tick
+
+**Why (ruling from Task 1 review):** `writeState` is one-shot. If the `ARMED\n` write is refused, the file on disk still says `IDLE\n` during a live exam — the one failure that would let the updater swap mid-exam. The tick already runs every 30 s; make it re-sync the marker when the last successful write does not match the session state.
+
+**Files:**
+- Modify: `src/sw.js` (`writeState`, new `resyncStateNow`, `tick`)
+- Modify: `tests/unit/sw-update.test.js` (append two tests at the end)
+
+**Interfaces:**
+- Consumes: `writeState(state)`, `writeStateNow()`, `tick()`, `reloadIfUpdatedNow` from Tasks 1-2; `store.patchMeta`.
+- Produces: `meta.markerState` = the state word of the last marker write that succeeded; `resyncStateNow()`.
+
+- [ ] **Step 1: Write the failing tests** — append to `tests/unit/sw-update.test.js`:
+
+```js
+test('a refused marker write is retried on the next tick', async () => {
+  withDisk('0.1.0');
+  const before = markers().length;
+  chrome.downloads.failWhen = (o) => o.filename === STATE;
+  try { await sw.dispatch({ kind: 'NAV', tabId: 1, windowId: 3, url: 'https://e.x/start', at: Date.now() }); } finally { chrome.downloads.failWhen = null; }
+  assert.equal(await state(), 'ARMED');
+  assert.equal(markers().length, before + 1, 'the refused attempt is recorded by the fake but was rejected');
+  assert.notEqual((await chrome.storage.local.get('meta')).meta.markerState, 'ARMED');
+  await sw.tick();
+  await sw.settled();
+  assert.equal(markers().at(-1), 'ARMED\n');
+  assert.equal((await chrome.storage.local.get('meta')).meta.markerState, 'ARMED');
+});
+
+test('a tick does not rewrite a marker that already matches the session', async () => {
+  const n = markers().length;
+  await sw.tick();
+  await sw.settled();
+  assert.equal(markers().length, n);
+});
+```
+
+Check first how the fake records a refused download: `grep -n "failWhen" tests/unit/fake-chrome.js`. If `failWhen` throws *before* pushing to `calls`, change the `before + 1` assertion to `before` (the refused attempt is not recorded). Do not change anything else in the test.
+
+- [ ] **Step 2: Run to verify they fail** — `node --test tests/unit/sw-update.test.js`. Expected: the first new test fails (`markerState` undefined / marker not rewritten).
+
+- [ ] **Step 3: Implement in `src/sw.js`**
+
+Change `writeState` so a successful write remembers what is on disk:
+
+```js
+async function writeState(state) {
+  try {
+    await writeFile(STATE_FILE, dataUrl('text/plain', toBase64(`${state}\n`)));
+    await store.patchMeta({ markerState: state });
+  } catch (e) { await store.patchMeta({ lastError: `${new Date().toISOString()} state marker: ${e?.message || e}` }); }
+}
+```
+
+Add below `writeStateNow`:
+
+```js
+// A refused write (download blocked, disk full) would otherwise leave a stale IDLE on disk for
+// the whole exam — exactly the file the updater trusts.
+async function resyncStateNow() {
+  const { session, meta = {} } = await store.get(['session', 'meta']);
+  const state = session?.state ?? 'IDLE';
+  if (meta.markerState !== state) await writeState(state);
+}
+```
+
+In `tick()`, before the existing `await enqueue(reloadIfUpdatedNow);` add `await enqueue(resyncStateNow);`.
+
+`writeStateNow` (onStartup/onInstalled) stays unconditional: the file may be missing or hand-deleted even when `markerState` matches.
+
+- [ ] **Step 4: Run the file** — `node --test tests/unit/sw-update.test.js`. Expected: PASS. Earlier tests in the file that call `sw.tick()` may now show one extra marker download where the state on disk lagged; if an earlier assertion on `markers()` breaks, report it rather than loosening it.
+
+- [ ] **Step 5: Full suite** — `npm run check && npm test`. Expected: all pass (354).
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/sw.js tests/unit/sw-update.test.js
+git commit -m "feat(sw): re-sync the state marker on tick when a write was refused"
+```
+
+---
+
 ### Task 3: Windows updater swaps while the marker says IDLE
 
 **Files:**
