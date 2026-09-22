@@ -16,7 +16,7 @@ Get this folder from GitHub instead of a pen drive
   newest release, extract it, then follow the install steps below from the extracted folder.
 
 Automatic updates
-  The installer registers a job that runs at logon and once an hour. It downloads a newer release
+  The installer registers a job that runs at logon and every hour on the hour. It downloads a newer release
   when there is one and replaces the ExamEye folder only while Chrome is closed or while ExamEye
   is idle (no exam armed or closing), so a running exam is never touched. ExamEye reports its
   state in <home>\Downloads\ExamEye-updater\state.txt (IDLE, ARMED or CLOSING); an idle ExamEye

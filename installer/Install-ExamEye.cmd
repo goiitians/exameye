@@ -40,11 +40,11 @@ if errorlevel 1 (
 )
 <nul set /p "=%DEST%" | clip
 if not exist "%UPD%" mkdir "%UPD%"
-copy /Y "%~dp0Update-ExamEye.cmd" "%UPD%\Update-ExamEye.cmd" >nul && copy /Y "%~dp0Update-ExamEye.vbs" "%UPD%\Update-ExamEye.vbs" >nul && schtasks /Create /F /SC HOURLY /MO 1 /TN "ExamEye Update" /TR "wscript.exe //B //Nologo \"%UPD%\Update-ExamEye.vbs\"" >nul && copy /Y "%~dp0Update-ExamEye.vbs" "%STARTUP%\ExamEye-Update.vbs" >nul
+copy /Y "%~dp0Update-ExamEye.cmd" "%UPD%\Update-ExamEye.cmd" >nul && copy /Y "%~dp0Update-ExamEye.vbs" "%UPD%\Update-ExamEye.vbs" >nul && schtasks /Create /F /SC HOURLY /MO 1 /ST 00:00 /TN "ExamEye Update" /TR "wscript.exe //B //Nologo \"%UPD%\Update-ExamEye.vbs\"" >nul && copy /Y "%~dp0Update-ExamEye.vbs" "%STARTUP%\ExamEye-Update.vbs" >nul
 if errorlevel 1 (
   echo Could not set up automatic updates. ExamEye still works; updates will need a re-install.
 ) else (
-  echo Automatic updates set up: hourly task "ExamEye Update" and a Startup entry; they replace ExamEye while Chrome is closed or ExamEye is idle.
+  echo Automatic updates set up: task "ExamEye Update" on the hour and a Startup entry; they replace ExamEye while Chrome is closed or ExamEye is idle.
 )
 start chrome "chrome://extensions" 2>nul || start msedge "edge://extensions"
 echo.
