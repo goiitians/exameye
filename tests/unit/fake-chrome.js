@@ -12,6 +12,7 @@ export function installFakeChrome() {
       id: 'fake-ext-id', onStartup: evt(), onInstalled: evt(), onMessage: evt(),
       getURL: (p) => 'chrome-extension://fake-ext-id/' + p,
       getManifest: () => ({ version: '0.1.0' }),
+      reloads: 0, reload() { c.runtime.reloads += 1; },
       optionsOpened: 0, async openOptionsPage() { c.runtime.optionsOpened += 1; },
       sent: [], responder: null, ports: [], onConnect: evt(),
       connect(info) {

@@ -62,3 +62,75 @@ test('a refused marker write records meta.lastError and does not stop the sessio
   assert.match(meta.lastError, /state marker/);
   assert.ok(chrome.downloads.calls.some(c => c.filename.endsWith('/log.txt') && decode(c.url).includes('SESSION_DISARMED')), 'the disarm was still flushed');
 });
+
+const withDisk = (version) => { globalThis.fetch = async (url) => { if (!String(url).endsWith('/manifest.json')) throw new Error('unexpected ' + url); if (version === null) throw new Error('ENOENT'); return { json: async () => ({ version }) }; }; };
+const state = async () => (await chrome.storage.local.get('session')).session?.state ?? 'IDLE';
+
+test('tick does not reload when the on-disk version matches the running one', async () => {
+  await sw.dispatch({ kind: 'TAB_REMOVED', tabId: 1, windowId: 3, at: Date.now() });
+  assert.equal(await state(), 'IDLE');
+  withDisk('0.1.0');
+  await sw.tick();
+  await sw.settled();
+  assert.equal(chrome.runtime.reloads, 0);
+});
+
+test('tick reloads when the on-disk version differs and the session is IDLE with nothing pending', async () => {
+  withDisk('0.1.9');
+  await sw.tick();
+  await sw.settled();
+  assert.equal(chrome.runtime.reloads, 1);
+});
+
+test('no reload while ARMED or CLOSING; the transition to IDLE reloads without waiting for a tick', async () => {
+  withDisk('0.1.9');
+  await sw.dispatch({ kind: 'NAV', tabId: 1, windowId: 3, url: 'https://e.x/start', at: Date.now() });
+  assert.equal(await state(), 'ARMED');
+  await sw.tick();
+  await sw.settled();
+  assert.equal(chrome.runtime.reloads, 1, 'ARMED');
+  await sw.dispatch({ kind: 'NAV', tabId: 1, windowId: 3, url: 'https://e.x/result', at: Date.now() });
+  assert.equal(await state(), 'CLOSING');
+  await sw.tick();
+  await sw.settled();
+  assert.equal(chrome.runtime.reloads, 1, 'CLOSING');
+  await sw.dispatch({ kind: 'TAB_REMOVED', tabId: 1, windowId: 3, at: Date.now() });
+  await sw.settled();
+  assert.equal(await state(), 'IDLE');
+  assert.equal(chrome.runtime.reloads, 2, 'IDLE transition');
+});
+
+test('no reload while files are still pending', async () => {
+  withDisk('0.1.9');
+  await chrome.storage.local.set({ pending: { 'ExamEye/x/log.txt': { mime: 'text/plain', b64: 'aGk=' } } });
+  chrome.downloads.failWhen = (o) => o.filename.endsWith('/log.txt');
+  try { await sw.tick(); await sw.settled(); } finally { chrome.downloads.failWhen = null; }
+  assert.equal(chrome.runtime.reloads, 2);
+  await sw.flush();
+  assert.deepEqual((await chrome.storage.local.get('pending')).pending, {});
+});
+
+// tick() replays meta.pendingEnd before the reload check, so the only way it is still set at
+// check time is a replay that could not run: no valid config. Hide the config for that one tick.
+test('no reload while a session end is unfinished', async () => {
+  withDisk('0.1.9');
+  const { meta, config } = await chrome.storage.local.get(['meta', 'config']);
+  await chrome.storage.local.set({ meta: { ...meta, pendingEnd: { outcome: 'closed', session: { id: 'zz', state: 'IDLE', subfolder: 'ExamEye', seat: 'A17' }, events: [], lines: [], shots: {} } }, config: null });
+  await sw.settled();
+  await sw.tick();
+  await sw.settled();
+  assert.equal(chrome.runtime.reloads, 2);
+  await chrome.storage.local.set({ meta: { ...(await chrome.storage.local.get('meta')).meta, pendingEnd: null }, config });
+  await sw.settled();
+});
+
+test('a failing manifest read (file mid-rename) is ignored until the next tick', async () => {
+  withDisk(null);
+  await sw.tick();
+  await sw.settled();
+  assert.equal(chrome.runtime.reloads, 2);
+  withDisk('0.1.9');
+  await sw.tick();
+  await sw.settled();
+  assert.equal(chrome.runtime.reloads, 3);
+});

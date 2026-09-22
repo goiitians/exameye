@@ -93,6 +93,18 @@ async function writeStateNow() {
   await writeState(session?.state ?? 'IDLE');
 }
 
+// The updater (installer/Update-ExamEye.cmd, update-exameye.sh) swaps the folder under a running
+// Chrome; an unpacked extension keeps serving the old worker until it reloads itself, and only
+// an idle one with nothing left to write may.
+async function reloadIfUpdatedNow() {
+  let disk;
+  try { disk = (await (await fetch(chrome.runtime.getURL('manifest.json'))).json()).version; } catch { return; }
+  if (disk === chrome.runtime.getManifest().version) return;
+  const { session, meta = {}, pending = {} } = await store.get(['session', 'meta', 'pending']);
+  if ((session && session.state !== 'IDLE') || meta.pendingEnd || Object.keys(pending).length) return;
+  chrome.runtime.reload();
+}
+
 async function dispatchNow(input) {
   const cfg = await loadConfig();
   if (!cfg) return;
@@ -162,7 +174,10 @@ async function dispatchNow(input) {
     Object.assign(batch, { events: [], lines: [], shots: {}, meta: { ...batch.meta, pendingEnd } });
   }
   await store.set(batch);
-  if (r.session.state !== prevState) await writeState(r.session.state);
+  if (r.session.state !== prevState) {
+    await writeState(r.session.state);
+    if (r.session.state === 'IDLE') enqueue(reloadIfUpdatedNow);
+  }
   if (newEvents.length || endEffect) await paintBadge(r.session, endEffect ? [] : events);
   await runEffects(r.effects, cfg, pendingEnd);
   if (newEvents.length) await flushNow();
@@ -455,6 +470,7 @@ export async function tick() {
   const examTabPresent = session && session.state !== 'IDLE' && (await getTab(session.examTabId)) !== null;
   await dispatch({ kind: 'TICK', at: now(), windows, examTabPresent });
   await flush();
+  await enqueue(reloadIfUpdatedNow);
 }
 
 // One queue step, enqueued synchronously by the onStartup listener: restored tabs' onCommitted
