@@ -84,13 +84,23 @@ async function paintBadge(session, events) {
 }
 
 async function writeState(state) {
-  try { await writeFile(STATE_FILE, dataUrl('text/plain', toBase64(`${state}\n`))); }
-  catch (e) { await store.patchMeta({ lastError: `${new Date().toISOString()} state marker: ${e?.message || e}` }); }
+  try {
+    await writeFile(STATE_FILE, dataUrl('text/plain', toBase64(`${state}\n`)));
+    await store.patchMeta({ markerState: state });
+  } catch (e) { await store.patchMeta({ lastError: `${new Date().toISOString()} state marker: ${e?.message || e}` }); }
 }
 
 async function writeStateNow() {
   const { session } = await store.get('session');
   await writeState(session?.state ?? 'IDLE');
+}
+
+// A refused write (download blocked, disk full) would otherwise leave a stale IDLE on disk for
+// the whole exam — exactly the file the updater trusts.
+async function resyncStateNow() {
+  const { session, meta = {} } = await store.get(['session', 'meta']);
+  const state = session?.state ?? 'IDLE';
+  if (meta.markerState !== state) await writeState(state);
 }
 
 // The updater (installer/Update-ExamEye.cmd, update-exameye.sh) swaps the folder under a running
@@ -470,6 +480,7 @@ export async function tick() {
   const examTabPresent = session && session.state !== 'IDLE' && (await getTab(session.examTabId)) !== null;
   await dispatch({ kind: 'TICK', at: now(), windows, examTabPresent });
   await flush();
+  await enqueue(resyncStateNow);
   await enqueue(reloadIfUpdatedNow);
 }
 

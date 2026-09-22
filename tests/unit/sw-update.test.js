@@ -135,3 +135,24 @@ test('a failing manifest read (file mid-rename) is ignored until the next tick',
   await sw.settled();
   assert.equal(chrome.runtime.reloads, 3);
 });
+
+test('a refused marker write is retried on the next tick', async () => {
+  withDisk('0.1.0');
+  const before = markers().length;
+  chrome.downloads.failWhen = (o) => o.filename === STATE;
+  try { await sw.dispatch({ kind: 'NAV', tabId: 1, windowId: 3, url: 'https://e.x/start', at: Date.now() }); } finally { chrome.downloads.failWhen = null; }
+  assert.equal(await state(), 'ARMED');
+  assert.equal(markers().length, before, 'the refused attempt is rejected before the fake records it');
+  assert.notEqual((await chrome.storage.local.get('meta')).meta.markerState, 'ARMED');
+  await sw.tick();
+  await sw.settled();
+  assert.equal(markers().at(-1), 'ARMED\n');
+  assert.equal((await chrome.storage.local.get('meta')).meta.markerState, 'ARMED');
+});
+
+test('a tick does not rewrite a marker that already matches the session', async () => {
+  const n = markers().length;
+  await sw.tick();
+  await sw.settled();
+  assert.equal(markers().length, n);
+});
