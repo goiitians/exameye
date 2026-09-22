@@ -111,11 +111,12 @@ test('no reload while files are still pending', async () => {
 });
 
 // tick() replays meta.pendingEnd before the reload check, so the only way it is still set at
-// check time is a replay that could not run: no valid config. Hide the config for that one tick.
+// check time is a replay that could not run: an invalid config makes loadConfig() return null,
+// so tick()'s replay is skipped. Hide the config for that one tick.
 test('no reload while a session end is unfinished', async () => {
   withDisk('0.1.9');
   const { meta, config } = await chrome.storage.local.get(['meta', 'config']);
-  await chrome.storage.local.set({ meta: { ...meta, pendingEnd: { outcome: 'closed', session: { id: 'zz', state: 'IDLE', subfolder: 'ExamEye', seat: 'A17' }, events: [], lines: [], shots: {} } }, config: null });
+  await chrome.storage.local.set({ meta: { ...meta, pendingEnd: { outcome: 'closed', session: { id: 'zz', state: 'IDLE', subfolder: 'ExamEye', seat: 'A17' }, events: [], lines: [], shots: {} } }, config: {} });
   await sw.settled();
   await sw.tick();
   await sw.settled();
