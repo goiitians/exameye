@@ -2,11 +2,26 @@
 # ExamEye installer for macOS. If double-clicking says it cannot be executed, open Terminal and run:
 #   bash "/Volumes/<pen drive>/exameye-installer/Install-ExamEye.command"
 set -e
+: "${HOME:?HOME is not set; cannot tell where to install}"
 SRC="$(cd "$(dirname "$0")" && pwd)/ExamEye"
 DEST="$HOME/ExamEye"
+REINSTALL=
 echo
 echo "ExamEye installer"
 echo "================="
+# An earlier install is replaced whole (agent, folders), so no file from an older version
+# survives. Chrome must be quit: deleting the folder it has loaded fails half-way.
+if [ -f "$DEST/manifest.json" ]; then
+  REINSTALL=1
+  echo "ExamEye is already installed at $DEST; replacing it."
+  if pgrep -xq 'Google Chrome' || pgrep -xq 'Microsoft Edge'; then
+    echo "Chrome is open. Quit it, then run this installer again."
+    exit 1
+  fi
+  launchctl bootout "gui/$(id -u)/in.exameye.update" 2>/dev/null || true
+  rm -f "$HOME/Library/LaunchAgents/in.exameye.update.plist"
+  rm -rf "$DEST" "$DEST.new" "$DEST.old" "$HOME/ExamEye-updater"
+fi
 echo "Copying ExamEye to $DEST (Chrome loads it from there, so the pen drive can be removed afterwards)."
 mkdir -p "$DEST"
 cp -R "$SRC/." "$DEST/"
@@ -37,11 +52,21 @@ PLIST
   launchctl bootstrap "gui/$(id -u)" "$PL" 2>/dev/null || launchctl load "$PL"
 }
 if register_updater; then
-  echo "Automatic updates registered (launchd agent in.exameye.update: at login and hourly, only while Chrome is closed)."
+  echo "Automatic updates registered (launchd agent in.exameye.update: at login and hourly; it replaces ExamEye while Chrome is closed or ExamEye is idle)."
 else
   echo "Could not register the hourly update agent. ExamEye still works; updates will need a re-install."
 fi
 open -a "Google Chrome" "chrome://extensions" 2>/dev/null || open -a "Microsoft Edge" "edge://extensions"
+if [ -n "$REINSTALL" ]; then
+  cat <<MSG
+
+Chrome is starting. ExamEye was already loaded from $DEST, so there is nothing to click:
+Chrome loads the new version from the same folder. Check that the ExamEye popup shows
+"Installed version" with the new number. Saved settings are kept; if the seat ID is wrong,
+change it on the setup page (ExamEye - Details - Extension options).
+MSG
+  exit 0
+fi
 cat <<MSG
 
 Chrome is opening its Extensions page. Three clicks left:

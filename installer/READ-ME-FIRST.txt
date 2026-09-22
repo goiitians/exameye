@@ -61,6 +61,15 @@ Install on a Mac
   In the "Load unpacked" dialog press Command-Shift-G to paste the path.
   Also: System Settings > Privacy & Security > Screen Recording > enable Chrome, then quit and reopen Chrome.
 
+Reinstall or upgrade by hand (ExamEye already on the machine)
+  Close Chrome, then run the same installer from the new zip. It notices the existing
+  <home>\ExamEye, removes the old install first (the "ExamEye Update" task, the Startup entry,
+  <home>\ExamEye, ExamEye.new, ExamEye.old and <home>\ExamEye-updater with its update.log) and
+  installs fresh. Exam records under Downloads\ExamEye are never touched. Chrome keeps ExamEye
+  registered at the same folder, so skip "Load unpacked": start Chrome and check the popup shows
+  the new "Installed version". Saved settings are kept. With Chrome open the installer stops and
+  asks you to close it; nothing is removed in that case.
+
 Then, on every machine (10 minutes)
   Open the exam start page in a new tab. The ExamEye icon shows a red 0 and its popup says ARMED.
   Switch to another tab and back, minimise and restore the window, then open the result page
