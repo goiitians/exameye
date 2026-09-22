@@ -5,6 +5,8 @@ function evt() {
 
 const yieldTick = () => new Promise((r) => setTimeout(r, 0));
 
+const downloadsChanged = evt();
+
 export function installFakeChrome() {
   const store = {};
   const c = {
@@ -103,7 +105,7 @@ export function installFakeChrome() {
       async search(q) { return c.downloads.items.filter(i => q.id === undefined || i.id === q.id); },
       async erase(q) { c.downloads.erased.push(q.id); return [q.id]; },
       async setUiOptions(o) { c.downloads.uiOptions = o; },
-      onCreated: evt(), onChanged: evt(),
+      onCreated: evt(), onChanged: downloadsChanged,
     },
     scripting: {
       registered: [],
