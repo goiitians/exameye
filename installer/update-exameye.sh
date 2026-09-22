@@ -1,7 +1,7 @@
 #!/bin/bash
 # ExamEye updater for macOS. Runs at login and hourly (launchd agent in.exameye.update, installed by
-# Install-ExamEye.command). Swaps the extension folder only while Chrome is closed, so a running
-# exam never sees mixed files. Log: ~/ExamEye-updater/update.log
+# Install-ExamEye.command). Swaps the extension folder only while Chrome is closed or ExamEye's
+# marker says its session is IDLE, so a running exam never sees mixed files. Log: ~/ExamEye-updater/update.log
 set -u
 BASE_URL="${EXAMEYE_UPDATE_URL:-https://github.com/goiitians/exameye/releases/latest/download}"
 EXT="$HOME/ExamEye"
@@ -13,7 +13,17 @@ mkdir -p "$DIR"
 
 log() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" >> "$LOG"; }
 version_of() { sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$1" | head -1; }
+STATE="$HOME/Downloads/ExamEye-updater/state.txt"
 chrome_running() { pgrep -xq 'Google Chrome' || pgrep -xq 'Microsoft Edge'; }
+# prints nothing and returns 0 when the swap may go ahead: no browser running, or the marker says IDLE
+gate() {
+  chrome_running || return 0
+  local state
+  state=$(head -n 1 "$STATE" 2>/dev/null)
+  [ "$state" = IDLE ] && return 0
+  printf '%s' "${state:-no state}"
+  return 1
+}
 newer() {
   local IFS=.
   local -a a=($1) b=($2)
@@ -33,7 +43,7 @@ body=$(curl -fsSL --max-time 30 "$BASE_URL/version.txt") || { log 'failed: canno
 latest=$(printf '%s' "$body" | tr -d '[:space:]')
 [ -n "$latest" ] || { log 'failed: empty version.txt'; exit 0; }
 newer "$latest" "$installed" || { log "up to date $installed"; exit 0; }
-chrome_running && { log "skipped $latest: chrome running"; exit 0; }
+why=$(gate) || { log "skipped $latest: chrome running ($why)"; exit 0; }
 
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/exameye-update.XXXXXX") || { log 'failed: mktemp'; exit 0; }
 trap 'rm -rf "$tmp" "$NEW"' EXIT
@@ -47,7 +57,7 @@ rm -rf "$NEW" "$OLD"
 cp -R "$src/ExamEye" "$NEW" || { log 'failed: mirror'; exit 0; }
 # defaults.json carries the seat id typed at install and is read once, on first install
 if [ -f "$EXT/defaults.json" ]; then cp "$EXT/defaults.json" "$NEW/defaults.json" || { log 'failed: defaults'; exit 0; }; fi
-chrome_running && { log "skipped $latest: chrome running"; exit 0; }
+why=$(gate) || { log "skipped $latest: chrome running ($why)"; exit 0; }
 mv "$EXT" "$OLD" || { log 'failed: swap'; exit 0; }
 mv "$NEW" "$EXT" || { mv "$OLD" "$EXT"; log 'failed: swap'; exit 0; }
 note=''
