@@ -43,7 +43,7 @@ register_updater() {
   <key>Label</key><string>in.exameye.update</string>
   <key>ProgramArguments</key><array><string>/bin/bash</string><string>$UPD/update-exameye.sh</string></array>
   <key>RunAtLoad</key><true/>
-  <key>StartInterval</key><integer>3600</integer>
+  <key>StartCalendarInterval</key><dict><key>Minute</key><integer>0</integer></dict>
   <key>StandardOutPath</key><string>$UPD/launchd.log</string>
   <key>StandardErrorPath</key><string>$UPD/launchd.log</string>
 </dict></plist>
@@ -52,7 +52,7 @@ PLIST
   launchctl bootstrap "gui/$(id -u)" "$PL" 2>/dev/null || launchctl load "$PL"
 }
 if register_updater; then
-  echo "Automatic updates registered (launchd agent in.exameye.update: at login and hourly; it replaces ExamEye while Chrome is closed or ExamEye is idle)."
+  echo "Automatic updates registered (launchd agent in.exameye.update: at login and on the hour; it replaces ExamEye while Chrome is closed or ExamEye is idle)."
 else
   echo "Could not register the hourly update agent. ExamEye still works; updates will need a re-install."
 fi
