@@ -66,13 +66,12 @@ if exist "%TMPD%" rmdir /s /q "%TMPD%" 2>nul
 goto :eof
 
 :log
-rem delayed expansion keeps "->" and parentheses in the message out of the parser's hands
+rem delayed expansion keeps "->" and parentheses in the message out of the parser's hands;
+rem no PowerShell for the timestamp (blocked or slow by policy on managed PCs) - %DATE% %TIME%
+rem is good enough for a log line nothing parses
 setlocal EnableDelayedExpansion
 set "MSG=%~1"
-set "STAMP="
-for /f "delims=" %%t in ('powershell -NoProfile -Command "(Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ', [Globalization.CultureInfo]::InvariantCulture)" 2^>nul') do set "STAMP=%%t"
-if not defined STAMP set "STAMP=%DATE% %TIME%"
->>"%LOG%" echo(!STAMP! !MSG!
+>>"%LOG%" echo(%DATE% %TIME% !MSG!
 endlocal
 goto :eof
 

@@ -62,8 +62,7 @@ Two scripts with identical logic, shipped at the installer root and copied by th
   window appears during an exam. Hourly: `schtasks /Create /SC HOURLY /MO 1 /TN "ExamEye Update" /TR
   "wscript.exe //B //Nologo <home>\ExamEye-updater\Update-ExamEye.vbs"`, per user, no elevation. At
   logon: a copy of the launcher in `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\`.
-  Chrome/Edge detection with `tasklist`; the log timestamp comes from a PowerShell `-Command` (allowed
-  under an execution policy, which governs script files only) with `%DATE% %TIME%` as the fallback.
+  Chrome/Edge detection with `tasklist`; the log timestamp is `%DATE% %TIME%`, no PowerShell anywhere.
 - macOS: `update-exameye.sh`, run by a launchd agent `~/Library/LaunchAgents/in.exameye.update.plist`
   (`RunAtLoad` true, `StartInterval` 3600, stdout/stderr to the log below). Loaded with
   `launchctl bootstrap gui/$UID` (falls back to `launchctl load`).
@@ -103,7 +102,8 @@ does not reseed `defaults.json` (that happens only on `install`).
 - `Install-ExamEye.cmd` / `Install-ExamEye.command`: after the copy and seat prompt, copy the
   updater script to `<home>/ExamEye-updater/` and register the task / agent. Both steps are
   idempotent (re-registering replaces). The final on-screen text mentions that updates are
-  automatic from now on.
+  automatic from now on. A reinstall over an existing ExamEye swaps in the new folder the same
+  way the updater does (stage into `<home>/ExamEye.new`, rename), instead of deleting first.
 - `tools/build-installer.mjs`: also copies the updaters (`Update-ExamEye.cmd` and `.vbs` with CRLF,
   `update-exameye.sh` with mode 755), and takes
   the output directory from `EXAMEYE_DIST` when set (default `dist/exameye-installer`) so a test can

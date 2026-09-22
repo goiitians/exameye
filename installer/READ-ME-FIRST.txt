@@ -23,7 +23,7 @@ Automatic updates
   reloads itself onto the new version within a minute, otherwise right after the exam ends. The
   ExamEye popup shows the running version. Log: <home>\ExamEye-updater\update.log (one line per
   run; "skipped ...: chrome running (ARMED)" means it is waiting for the exam to end).
-  The updater owns <home>\ExamEye.new and <home>\ExamEye.old and deletes them; do not keep a backup under those names.
+  The updater and the installer own <home>\ExamEye.new and <home>\ExamEye.old and delete them; do not keep a backup under those names.
   A log line that stays at "skipped ...: chrome running (no state)" while Chrome is open means
   Chrome's Downloads folder is redirected (for example by OneDrive), so the marker is never found
   and the updater waits for Chrome to be closed.
@@ -62,13 +62,12 @@ Install on a Mac
   Also: System Settings > Privacy & Security > Screen Recording > enable Chrome, then quit and reopen Chrome.
 
 Reinstall or upgrade by hand (ExamEye already on the machine)
-  Close Chrome, then run the same installer from the new zip. It notices the existing
-  <home>\ExamEye, removes the old install first (the "ExamEye Update" task, the Startup entry,
-  <home>\ExamEye, ExamEye.new, ExamEye.old and <home>\ExamEye-updater with its update.log) and
-  installs fresh. Exam records under Downloads\ExamEye are never touched. Chrome keeps ExamEye
-  registered at the same folder, so skip "Load unpacked": start Chrome and check the popup shows
-  the new "Installed version". Saved settings are kept. With Chrome open the installer stops and
-  asks you to close it; nothing is removed in that case.
+  Chrome need not be closed: run the same installer from the new zip and it stages the new
+  version next to the old one, then swaps it in by rename; update.log is kept. Exam records
+  under Downloads\ExamEye are never touched. Chrome keeps ExamEye registered at the same folder,
+  so skip "Load unpacked": start Chrome and check the popup shows the new "Installed version".
+  Saved settings are kept. It refuses only while an exam is running on that PC. If the swap says
+  the folder is in use, close Chrome and Edge (Edge runs in the background) and run it again.
 
 Then, on every machine (10 minutes)
   Open the exam start page in a new tab. The ExamEye icon shows a red 0 and its popup says ARMED.

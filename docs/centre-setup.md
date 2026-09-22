@@ -7,7 +7,7 @@ Two routes; pick one per centre.
 
 **Pen-drive installer (unpacked copy, one machine at a time)**
 - Build it once: `node tools/build-installer.mjs` writes `dist/exameye-installer/` (and a zip). Copy that folder to a pen drive. It holds the extension, `Install-ExamEye.cmd` / `Install-ExamEye.command`, `READ-ME-FIRST.txt`, the guide and the deck.
-- On each machine run the installer: it copies the extension to `<home>\ExamEye`, asks for the desk's seat ID, writes it into `ExamEye\defaults.json`, puts the folder path on the clipboard and opens `chrome://extensions`. Then Developer mode ON -> Load unpacked -> paste the path.
+- On each machine run the installer: it copies the extension to `<home>\ExamEye`, asks for the desk's seat ID, writes it into `ExamEye\defaults.json`, puts the folder path on the clipboard and opens `chrome://extensions`. Then Developer mode ON -> Load unpacked -> paste the path. A machine that already has ExamEye is replaced the same way the updater does it: staged next to the old folder and swapped in by rename, refusing only while an exam is running.
 - `defaults.json` next to `manifest.json` is read once, on first install, when no settings exist yet; the setup page opens by itself with those values. Later updates never overwrite saved settings. The centre's values live in `installer/defaults.json` in the repo.
 
 **GitHub release (same installer, no pen drive) and automatic updates**
