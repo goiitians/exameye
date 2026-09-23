@@ -7,13 +7,13 @@ Two routes; pick one per centre.
 
 **Pen-drive installer (unpacked copy, one machine at a time)**
 - Build it once: `node tools/build-installer.mjs` writes `dist/exameye-installer/` (and a zip). Copy that folder to a pen drive. It holds the extension, `Install-ExamEye.cmd` / `Install-ExamEye.command`, `READ-ME-FIRST.txt`, the guide and the deck.
-- On each machine run the installer: it copies the extension to `<home>\ExamEye`, asks for the desk's seat ID, writes it into `ExamEye\defaults.json`, puts the folder path on the clipboard and opens `chrome://extensions`. Then Developer mode ON -> Load unpacked -> paste the path. A machine that already has ExamEye is replaced the same way the updater does it: staged next to the old folder and swapped in by rename, refusing only while an exam is running.
-- `defaults.json` next to `manifest.json` is read once, on first install, when no settings exist yet; the setup page opens by itself with those values. Later updates never overwrite saved settings. The centre's values live in `installer/defaults.json` in the repo.
+- On each machine run the installer: it copies the extension to `<home>\ExamEye`, asks for the desk's seat ID, writes it to `ExamEye\seat.txt` (`defaults.json` is never edited), puts the folder path on the clipboard and opens `chrome://extensions`. Then Developer mode ON -> Load unpacked -> paste the path. A machine that already has ExamEye is replaced the same way the updater does it: staged next to the old folder and swapped in by rename, refusing only while an exam is running.
+- `defaults.json` next to `manifest.json`, with `seat.txt` beside it overriding the seat, is read only when no settings exist yet (first install, or an update that finds none); the setup page then opens by itself with those values. Later updates never overwrite saved settings. The centre's values live in `installer/defaults.json` in the repo.
 
 **GitHub release (same installer, no pen drive) and automatic updates**
 - Releases are published by hand: GitHub > Actions > Release > Run workflow on `main`. CI runs the unit tests, stamps version `0.1.<run number>`, builds the installer and attaches `exameye-installer.zip` + `version.txt` to release `v0.1.<run number>`. Nothing is published on a push.
 - Install from GitHub: download `exameye-installer.zip` from the newest release, extract, run the installer as above.
-- Both installers register an updater (Windows: plain batch `Update-ExamEye.cmd`, task `ExamEye Update` every hour on the hour plus a Startup entry, started windowless through `Update-ExamEye.vbs`, no PowerShell because managed PCs block `.ps1` files by policy; macOS: launchd agent `in.exameye.update`): at logon and on the hour it fetches `version.txt`, and only when a different (Windows) or newer (macOS) version exists **and Chrome is closed or ExamEye's marker (`<home>/Downloads/ExamEye-updater/state.txt`) says IDLE** it swaps in the new `ExamEye/` folder by rename (keeping `defaults.json`). Log: `<home>/ExamEye-updater/update.log`. The popup shows the running version. A running ExamEye reloads itself onto the swapped folder at its next idle 30 s tick. Design: `docs/superpowers/specs/2026-09-21-auto-update-design.md` (updater), `docs/superpowers/specs/2026-09-22-update-while-idle-design.md` (idle gate and self-reload).
+- Both installers register an updater (Windows: plain batch `Update-ExamEye.cmd`, task `ExamEye Update` every hour on the hour plus a Startup entry, started windowless through `Update-ExamEye.vbs`, no PowerShell because managed PCs block `.ps1` files by policy; macOS: launchd agent `in.exameye.update`): at logon and on the hour it fetches `version.txt`, and only when a different (Windows) or newer (macOS) version exists **and Chrome is closed or ExamEye's marker (`<home>/Downloads/ExamEye-updater/state.txt`) says IDLE** it swaps in the new `ExamEye/` folder by rename (keeping `seat.txt`). Log: `<home>/ExamEye-updater/update.log`. The popup shows the running version. A running ExamEye reloads itself onto the swapped folder at its next idle 30 s tick. Design: `docs/superpowers/specs/2026-09-21-auto-update-design.md` (updater), `docs/superpowers/specs/2026-09-22-update-while-idle-design.md` (idle gate and self-reload).
 
 **Unpacked copy (hand-installed, one machine at a time)**
 - Copy the ExamEye folder (the one containing `manifest.json`) somewhere it will not be moved or deleted, e.g. `C:\ExamEye` or `/opt/exameye`. Chrome loads it from that path on every start; moving it disables the extension.
@@ -54,7 +54,7 @@ Two routes; pick one per centre.
 | Periodic screenshot interval (minutes) | 10 (default) |
 | Abandon session after exam tab gone (minutes) | 10 (default) |
 | Desktop capture | `on` (default; set `off` only where the centre forbids screen recording) |
-| Re-ask after a declined share (minutes; 0 = ask once) | 5 (default) |
+| Re-ask after a declined share (seconds; 0 = ask once) | 300 (default) |
 Click Save. The status line must read `Saved.`; any red text names a field to fix.
 
 ## 5. Tab sleeping

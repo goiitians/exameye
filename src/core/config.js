@@ -5,15 +5,19 @@ export const DEFAULTS = Object.freeze({
   startPrefix: '', examPrefix: '', resultPrefix: '', seat: '',
   subfolder: 'ExamEye', shotIntervalMin: 10, abandonMin: 10,
   startButton: '', endButton: '', endMarker: '', maxMin: 0, tailMin: 5,
-  desktopCapture: 'on', desktopRepromptMin: 5,
+  desktopCapture: 'on', desktopRepromptSec: 300,
 });
 const STR = ['startPrefix', 'examPrefix', 'resultPrefix', 'seat', 'subfolder', 'startButton', 'endButton', 'endMarker', 'desktopCapture'];
-const NUM = ['shotIntervalMin', 'abandonMin', 'maxMin', 'tailMin', 'desktopRepromptMin'];
+const NUM = ['shotIntervalMin', 'abandonMin', 'maxMin', 'tailMin', 'desktopRepromptSec'];
 
 export function normalize(raw = {}) {
   const cfg = { ...DEFAULTS };
   for (const k of STR) if (typeof raw[k] === 'string') cfg[k] = raw[k].trim();
   for (const k of NUM) { const n = Number(raw[k]); if (raw[k] !== '' && Number.isFinite(n)) cfg[k] = n; }
+  if (raw.desktopRepromptSec === undefined && raw.desktopRepromptMin !== undefined) {
+    const m = Number(raw.desktopRepromptMin);
+    if (Number.isFinite(m)) cfg.desktopRepromptSec = Math.round(m * 60);
+  }
   return cfg;
 }
 
@@ -39,7 +43,7 @@ export function validate(cfg) {
   if (!Number.isInteger(cfg.maxMin) || cfg.maxMin < 0 || cfg.maxMin > 600) errors.push({ field: 'maxMin', message: 'integer 0-600' });
   if (!Number.isInteger(cfg.tailMin) || cfg.tailMin < 0 || cfg.tailMin > 60) errors.push({ field: 'tailMin', message: 'integer 0-60' });
   if (cfg.desktopCapture !== 'on' && cfg.desktopCapture !== 'off') errors.push({ field: 'desktopCapture', message: 'on or off' });
-  if (!Number.isInteger(cfg.desktopRepromptMin) || cfg.desktopRepromptMin < 0 || cfg.desktopRepromptMin > 60) errors.push({ field: 'desktopRepromptMin', message: 'integer 0-60' });
+  if (!Number.isInteger(cfg.desktopRepromptSec) || cfg.desktopRepromptSec < 0 || cfg.desktopRepromptSec > 3600) errors.push({ field: 'desktopRepromptSec', message: 'integer 0-3600' });
   return errors;
 }
 

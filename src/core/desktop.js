@@ -5,15 +5,15 @@ export const EMPTY_DESKTOP = Object.freeze({
   width: null, height: null, error: null, nextAskAt: null, screens: null,
 });
 
-export function shouldPrompt(desktop, { at, repromptMin }) {
+export function shouldPrompt(desktop, { at, repromptSec }) {
   const d = desktop || EMPTY_DESKTOP;
   if (d.state === 'prompting' || d.state === 'on') return false;
-  if (d.state === 'declined') return repromptMin > 0 && at - d.at >= repromptMin * 60000;
+  if (d.state === 'declined') return repromptSec > 0 && at - d.at >= repromptSec * 1000;
   return d.state === 'off' || d.state === 'stopped' || d.state === 'error';
 }
 
-function decline(d, name, at, repromptMin, extra = {}) {
-  const nextAskAt = repromptMin > 0 ? at + repromptMin * 60000 : null;
+function decline(d, name, at, repromptSec, extra = {}) {
+  const nextAskAt = repromptSec > 0 ? at + repromptSec * 1000 : null;
   const data = name === 'FAILED' ? { error: extra.error } : { asks: d.asks };
   return {
     desktop: { ...d, state: name === 'FAILED' ? 'error' : 'declined', at, nextAskAt, ...extra },
@@ -22,7 +22,7 @@ function decline(d, name, at, repromptMin, extra = {}) {
   };
 }
 
-export function onHolder(desktop, msg, { at, repromptMin }) {
+export function onHolder(desktop, msg, { at, repromptSec }) {
   const d = desktop || EMPTY_DESKTOP;
   if (msg.name === 'started') {
     const screens = msg.screens ?? null;
@@ -32,8 +32,8 @@ export function onHolder(desktop, msg, { at, repromptMin }) {
       effects: [{ type: 'MINIMIZE' }, { type: 'ASK_ALARM_CLEAR' }],
     };
   }
-  if (msg.name === 'cancelled') return decline(d, 'DECLINED', at, repromptMin);
-  if (msg.name === 'failed') return decline(d, 'FAILED', at, repromptMin, { error: msg.error });
+  if (msg.name === 'cancelled') return decline(d, 'DECLINED', at, repromptSec);
+  if (msg.name === 'failed') return decline(d, 'FAILED', at, repromptSec, { error: msg.error });
   if (msg.name === 'ended') {
     return {
       desktop: { ...d, state: 'stopped', at, since: null },
@@ -50,7 +50,7 @@ export function onHolder(desktop, msg, { at, repromptMin }) {
       };
     }
     if (d.state === 'prompting') {
-      const r = decline(d, 'DECLINED', at, repromptMin);
+      const r = decline(d, 'DECLINED', at, repromptSec);
       return { ...r, desktop: { ...r.desktop, holderWindowId: null, holderTabId: null } };
     }
     return { desktop: { ...d, holderWindowId: null, holderTabId: null, at }, input: null, effects: [] };

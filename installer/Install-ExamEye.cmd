@@ -47,35 +47,27 @@ if errorlevel 8 (
 )
 call :verify "%NEW%" "Details: %LOG%" || (rmdir /s /q "%NEW%" 2>nul & pause & exit /b 1)
 echo.
-rem No PowerShell: the centre PCs block or throttle it by policy.
+rem No PowerShell and no JSON editing: the seat goes to seat.txt beside manifest.json, read once by the extension.
 :askseat
 set "SEAT="
-set /p SEAT=Seat or centre ID for this desk [C01]: 
-if not defined SEAT set "SEAT=C01"
+set /p SEAT=Seat or centre ID for this desk: 
+if not defined SEAT (
+  echo A seat ID is required.
+  goto :askseat
+)
 setlocal EnableDelayedExpansion
->"%TEMP%\ExamEye-seat.tmp" echo(!SEAT!
-findstr /R /X /I /C:"[A-Z0-9_-]*" "%TEMP%\ExamEye-seat.tmp" >nul
-if errorlevel 1 (
-  del /q "%TEMP%\ExamEye-seat.tmp"
-  endlocal
+>"%NEW%\seat.txt" echo(!SEAT!
+endlocal
+if not exist "%NEW%\seat.txt" (
+  echo The seat ID could not be written to %NEW%\seat.txt.
+  pause
+  exit /b 1
+)
+findstr /R /X /I /C:"[A-Z0-9_-]*" "%NEW%\seat.txt" >nul || (
+  del /q "%NEW%\seat.txt"
   echo Use letters, digits, - and _ only.
   goto :askseat
 )
-del /q "%TEMP%\ExamEye-seat.tmp"
-rem both line numbers come from findstr /N, so blank lines in a centre-edited file cannot shift them
-set "SEATLN=0"
-for /f "tokens=1 delims=:" %%n in ('findstr /N /C:"\"seat\"" "%NEW%\defaults.json"') do if "!SEATLN!"=="0" set "SEATLN=%%n"
-set "COMMA="
-findstr /C:"\"seat\"" "%NEW%\defaults.json" | findstr /E /C:"," >nul && set "COMMA=,"
-(for /f "usebackq tokens=1* delims=:" %%a in (`findstr /N "^" "%NEW%\defaults.json"`) do (
-  set "line=%%b"
-  if %%a==!SEATLN! (echo(  "seat": "!SEAT!"!COMMA!) else echo(!line!
-)) > "%NEW%\defaults.seat"
-findstr /C:"\"seat\": \"!SEAT!\"" "%NEW%\defaults.seat" >nul && move /y "%NEW%\defaults.seat" "%NEW%\defaults.json" >nul || (
-  del /q "%NEW%\defaults.seat" 2>nul
-  echo The seat ID could not be written to defaults.json. Fix it on the setup page after loading the extension.
-)
-endlocal & set "SEAT=%SEAT%"
 rem two renames, as in Update-ExamEye.cmd - a failure anywhere leaves the live folder as it was
 if defined REINSTALL (
   if exist "%OLD%" rmdir /s /q "%OLD%"

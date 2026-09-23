@@ -47,15 +47,12 @@ mkdir -p "$NEW"
 cp -R "$SRC/." "$NEW/" || { rm -rf "$NEW"; echo "Copy failed."; exit 1; }
 verify_dir "$NEW" || { rm -rf "$NEW"; exit 1; }
 echo
-read -r -p "Seat or centre ID for this desk [C01]: " SEAT || true
-SEAT="${SEAT:-C01}"
+SEAT=
 while [[ ! "$SEAT" =~ ^[A-Za-z0-9_-]+$ ]]; do
-  echo "Use letters, digits, - and _ only."
-  read -r -p "Seat or centre ID for this desk [C01]: " SEAT || true
-  SEAT="${SEAT:-C01}"
+  [ -z "$SEAT" ] || echo "Use letters, digits, - and _ only."
+  read -r -p "Seat or centre ID for this desk: " SEAT || { echo "No seat ID given."; rm -rf "$NEW"; exit 1; }
 done
-sed -i '' "s/\"seat\": *\"[^\"]*\"/\"seat\": \"$SEAT\"/" "$NEW/defaults.json"
-grep -q "\"seat\": \"$SEAT\"" "$NEW/defaults.json" || echo "The seat ID could not be written to defaults.json. Fix it on the setup page after loading the extension."
+printf '%s\n' "$SEAT" > "$NEW/seat.txt"
 inuse() {
   if [ -f "$DEST/manifest.json" ]; then
     rm -rf "$NEW"

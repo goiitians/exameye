@@ -128,7 +128,7 @@ shape via `chrome.storage.managed`; phase 1 reads only `local`).
 | `shotIntervalMin` | number | `10` | integer 1–60 |
 | `abandonMin` | number | `10` | integer 1–120 |
 | `desktopCapture` | string | `'on'` | `'on'` or `'off'`; whether the screen-share dialog is opened at all (§6a) |
-| `desktopRepromptMin` | number | `5` | integer 0–60; minutes between re-asks after a decline; `0` = ask once per trigger, never by timer |
+| `desktopRepromptSec` | number | `300` | integer 0–3600; seconds between re-asks after a decline; `0` = ask once per trigger, never by timer |
 
 **Default for the open "in-progress URL" question:** when `examPrefix` is blank, the effective
 exam-domain prefix is the *origin* of `startPrefix` (`scheme://host[:port]/`). Any URL under that
@@ -476,7 +476,7 @@ alarm (`windows.getAll`) reconciles anything missed (e.g. restored while the SW 
 Records what the candidate opened when focus leaves Chrome: JPEG frames of the whole screen from
 a stream the candidate grants once through Chrome's own screen-share dialog. Nothing is
 installed, no invigilator click is needed, the exam tab is never blocked. Windows first; macOS
-differs only in a one-time permission (§11). Config: `desktopCapture`, `desktopRepromptMin` (§3).
+differs only in a one-time permission (§11). Config: `desktopCapture`, `desktopRepromptSec` (§3).
 
 **Why a holder window.** `chrome.desktopCapture.chooseDesktopMedia` fails from the service worker
 ("A target tab is required"), and a target tab would bind the stream to the exam page origin and
@@ -518,18 +518,18 @@ on, or the tick `grab` not alive) · `error` (`getUserMedia` rejected). `at` is 
 frames)` · `asking…` · `off — declined Nx, next ask HH:MM:SS` (or `off — declined Nx` when no
 timer) · `stopped at HH:MM:SS` · `error: <message>` · `off`.
 
-**Trigger and re-prompt** (`shouldPrompt(desktop, { at, repromptMin })`; applied only when
+**Trigger and re-prompt** (`shouldPrompt(desktop, { at, repromptSec })`; applied only when
 `config.desktopCapture === 'on'` and `chrome.desktopCapture` exists):
 - A `NAV` to the start prefix (any tab, IDLE or ARMED) and the IDLE → ARMED transition both call
   `promptDesktop`, which opens (or re-shows and re-asks) the holder when `state` is `off`,
-  `stopped` or `error`, or `declined` with `repromptMin > 0` and `at − desktop.at ≥ repromptMin ×
-  60000`. Never while `prompting` or `on`.
+  `stopped` or `error`, or `declined` with `repromptSec > 0` and `at − desktop.at ≥ repromptSec ×
+  1000`. Never while `prompting` or `on`.
 - If capture is already `on` when the session arms, the SW reduces `DESKTOP STARTED{width,
   height, pickMs, resumed:true}` right after the arming dispatch so the session log records that
   the screen was captured from the start.
-- Decline → `declined`, `DESKTOP_CAPTURE_DECLINED{asks}`; with `repromptMin > 0` the one-shot alarm
-  `desktopAsk` (§10) fires at `at + repromptMin × 60000` and prompts again only while the session
-  is ARMED/CLOSING and `state` is `declined` or `error`. `repromptMin = 0` asks once per trigger.
+- Decline → `declined`, `DESKTOP_CAPTURE_DECLINED{asks}`; with `repromptSec > 0` the one-shot alarm
+  `desktopAsk` (§10) fires at `at + repromptSec × 1000` and prompts again only while the session
+  is ARMED/CLOSING and `state` is `declined` or `error`. `repromptSec = 0` asks once per trigger.
 - `ended` (Stop sharing) → `stopped`, `DESKTOP_CAPTURE_STOPPED{reason:'stop-sharing'}`, re-ask at
   once in the same holder. Holder window closed while `on` → `STOPPED{reason:'window-closed'}`,
   new holder at once; closed while `prompting` → treated as a decline. `failed` → `error`,
@@ -763,13 +763,15 @@ fragment and appends `*` to the path (`https://exam.example.com/start?x=1` →
 | `abandon` | `when: tabLostAt + abandonMin*60000` (one-shot) | `ABANDON_TIMER` |
 | `max` | `when: startedAt + maxMin*60000` (one-shot, only when `maxMin>0`; cleared at tail start / disarm) | `MAX_TIMER` |
 | `closing` | `when: closingUntil` (one-shot; re-created on `END_CLICK` in CLOSING; cleared at disarm) | `CLOSING_TIMER` |
-| `desktopAsk` | `when: desktop.at + desktopRepromptMin*60000` (one-shot; set on decline/failure when `desktopRepromptMin>0`; cleared when the stream starts and at session end) | `promptDesktop` while ARMED/CLOSING and `meta.desktop.state` is `declined`/`error` (§6a) |
+| `desktopAsk` | `when: desktop.at + desktopRepromptSec*1000` (one-shot; set on decline/failure when `desktopRepromptSec>0`; cleared when the stream starts and at session end) | `promptDesktop` while ARMED/CLOSING and `meta.desktop.state` is `declined`/`error` (§6a) |
 
-On `runtime.onInstalled` with `reason === 'install'` the SW reads `defaults.json` from its own
-folder (`fetch(chrome.runtime.getURL('defaults.json'))`), stores it as `config` (normalised) only
-when no `config` exists yet, boots, and opens the options page; any other reason only boots. A
-checkout without the file behaves as before. `tools/build-installer.mjs` places
-`installer/defaults.json` next to the manifest in the pen-drive installer.
+On `runtime.onInstalled` (any reason) the SW, when no `config` exists yet, reads `defaults.json`
+from its own folder (`fetch(chrome.runtime.getURL('defaults.json'))`) and `seat.txt` beside it
+(one line, overrides `seat`), stores the result as `config` (normalised), boots, and opens the
+options page; with settings present it only boots (the page opens on `install` regardless). A
+failed read is recorded in `meta.lastError`, which the popup shows. A checkout without the files
+behaves as before. `tools/build-installer.mjs` places `installer/defaults.json` next to the
+manifest in the pen-drive installer; the installer writes `seat.txt` there.
 
 Self-update (2026-09-21): a manual GitHub release (`workflow_dispatch`, version `0.1.<run number>`
 stamped at build time) and a per-machine updater that replaces `<home>/ExamEye` only while Chrome

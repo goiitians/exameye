@@ -46,7 +46,7 @@ Publish a new version (owner)
 
 Install on a Windows machine
   1. Double-click Install-ExamEye.cmd. It copies ExamEye to C:\Users\<you>\ExamEye,
-     asks for this desk's seat ID (press Enter to keep C01) and opens Chrome's Extensions page.
+     asks for this desk's seat ID and opens Chrome's Extensions page.
   2. In Chrome: switch "Developer mode" on (top right), click "Load unpacked",
      paste the folder path (the installer put it on the clipboard), click "Select Folder".
   3. The ExamEye setup page opens by itself with all fields filled in.
@@ -83,10 +83,10 @@ Which settings are pre-filled
   Submit button         Submit
   Submitted phrase      Subject Analysis
   Maximum length        190 minutes;  keep watching after submit 5 minutes
-  Seat or centre ID     C01 (the installer asks; change it per desk)
+  Seat or centre ID     blank (the installer asks for it and writes it to ExamEye\seat.txt)
   Folder                Downloads\ExamEye
-  Routine screenshot    every 5 minutes;  give up after the tab is gone 15 minutes
-  Screen capture        on;  ask again after a refusal 1 minute
+  Routine screenshot    every 5 minutes;  give up after the tab is gone 5 minutes
+  Screen capture        on;  ask again after a refusal 5 seconds
   To change them for a whole batch of machines, edit ExamEye\defaults.json on the pen drive
   before installing. They can also be changed any time on the setup page.
 
