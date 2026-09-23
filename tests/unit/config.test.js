@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULTS, normalize, validate, effectiveExamPrefix, resolved, changedKeys } from '../../src/core/config.js';
 
-const good = { startPrefix: 'https://exam.example.com/start', examPrefix: '', resultPrefix: 'https://exam.example.com/result', seat: 'A17', subfolder: 'ExamEye', shotIntervalMin: 10, abandonMin: 10, startButton: '', endButton: '', endMarker: '', maxMin: 0, tailMin: 5, desktopCapture: 'on', desktopRepromptMin: 5 };
+const good = { startPrefix: 'https://exam.example.com/start', examPrefix: '', resultPrefix: 'https://exam.example.com/result', seat: 'A17', subfolder: 'ExamEye', shotIntervalMin: 10, abandonMin: 10, startButton: '', endButton: '', endMarker: '', maxMin: 0, tailMin: 5, desktopCapture: 'on', desktopRepromptSec: 300 };
 
 test('normalize merges defaults, trims strings, coerces numbers', () => {
   const cfg = normalize({ startPrefix: '  https://x.example/s ', shotIntervalMin: '5' });
@@ -70,11 +70,11 @@ test('maxMin 0-600 integer, tailMin 0-60 integer', () => {
   assert.deepEqual(validate({ ...good, tailMin: 1.5 }).map(e => e.field), ['tailMin']);
 });
 
-test('desktop fields default on / 5', () => {
+test('desktop fields default on / 300', () => {
   const cfg = normalize({});
   assert.equal(cfg.desktopCapture, 'on');
-  assert.equal(cfg.desktopRepromptMin, 5);
-  assert.equal(normalize({ desktopRepromptMin: '0' }).desktopRepromptMin, 0);
+  assert.equal(cfg.desktopRepromptSec, 300);
+  assert.equal(normalize({ desktopRepromptSec: '0' }).desktopRepromptSec, 0);
 });
 
 test('desktopCapture must be on or off', () => {
@@ -82,17 +82,22 @@ test('desktopCapture must be on or off', () => {
   assert.deepEqual(validate({ ...good, desktopCapture: 'OFF' }).map(e => e.field), ['desktopCapture']);
 });
 
-test('desktopRepromptMin integer 0-60', () => {
-  assert.deepEqual(validate({ ...good, desktopRepromptMin: -1 }).map(e => e.field), ['desktopRepromptMin']);
-  assert.deepEqual(validate({ ...good, desktopRepromptMin: 61 }).map(e => e.field), ['desktopRepromptMin']);
-  assert.deepEqual(validate({ ...good, desktopRepromptMin: 2.5 }).map(e => e.field), ['desktopRepromptMin']);
-  assert.deepEqual(validate({ ...good, desktopRepromptMin: 0 }), []);
+test('desktopRepromptSec integer 0-3600', () => {
+  assert.deepEqual(validate({ ...good, desktopRepromptSec: -1 }).map(e => e.field), ['desktopRepromptSec']);
+  assert.deepEqual(validate({ ...good, desktopRepromptSec: 3601 }).map(e => e.field), ['desktopRepromptSec']);
+  assert.deepEqual(validate({ ...good, desktopRepromptSec: 2.5 }).map(e => e.field), ['desktopRepromptSec']);
+  assert.deepEqual(validate({ ...good, desktopRepromptSec: 0 }), []);
+});
+
+test('desktopRepromptMin is migrated to desktopRepromptSec; an explicit desktopRepromptSec wins', () => {
+  assert.equal(normalize({ desktopRepromptMin: 2 }).desktopRepromptSec, 120);
+  assert.equal(normalize({ desktopRepromptMin: 2, desktopRepromptSec: 45 }).desktopRepromptSec, 45);
 });
 
 test('changedKeys lists the normalised fields that differ, in DEFAULTS order', () => {
   const a = { ...DEFAULTS, startPrefix: 'https://e.x/start', seat: 'A' };
   assert.deepEqual(changedKeys(a, { ...a, tailMin: '2', subfolder: ' ExamEye ' }), ['tailMin']);
-  assert.deepEqual(changedKeys(a, { ...a, desktopRepromptMin: 0, seat: 'B' }), ['seat', 'desktopRepromptMin']);
+  assert.deepEqual(changedKeys(a, { ...a, desktopRepromptSec: 0, seat: 'B' }), ['seat', 'desktopRepromptSec']);
   assert.deepEqual(changedKeys(a, a), []);
   assert.deepEqual(changedKeys(undefined, {}), []);
 });

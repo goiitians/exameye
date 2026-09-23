@@ -55,8 +55,9 @@ got=$(version_of "$src/ExamEye/manifest.json")
 # stage next to the live folder and swap by two renames: a failure anywhere leaves the live folder untouched
 rm -rf "$NEW" "$OLD"
 cp -R "$src/ExamEye" "$NEW" || { log 'failed: mirror'; exit 0; }
-# defaults.json carries the seat id typed at install and is read once, on first install
-if [ -f "$EXT/defaults.json" ]; then cp "$EXT/defaults.json" "$NEW/defaults.json" || { log 'failed: defaults'; exit 0; }; fi
+# seat.txt carries the seat typed at install and is read only when no settings exist yet; the
+# release's own defaults.json replaces the live one so a damaged copy cannot outlive an update
+if [ -f "$EXT/seat.txt" ]; then cp "$EXT/seat.txt" "$NEW/seat.txt" || { log 'failed: seat'; exit 0; }; fi
 why=$(gate) || { log "skipped $latest: chrome running ($why)"; exit 0; }
 mv "$EXT" "$OLD" || { log 'failed: swap'; exit 0; }
 mv "$NEW" "$EXT" || { mv "$OLD" "$EXT"; log 'failed: swap'; exit 0; }

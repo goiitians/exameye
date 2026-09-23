@@ -56,10 +56,9 @@ function runInstaller({ installerDir, shimDir, home }, script, seat) {
   });
 }
 
-async function readSeat(defaultsPath) {
-  const text = await readFile(defaultsPath, 'utf8');
-  const m = text.match(/"seat":\s*"([^"]*)"/);
-  return m ? m[1] : null;
+async function readSeat(seatPath) {
+  const text = await readFile(seatPath, 'utf8');
+  return text.trim();
 }
 
 async function exists(p) {
@@ -78,7 +77,8 @@ test('macOS installer stages into ExamEye.new and swaps, never deleting first', 
   const first = runInstaller(fx, script, 'A07');
   assert.equal(first.status, 0, first.stderr);
   const destManifest = path.join(fx.home, 'ExamEye/manifest.json');
-  assert.equal(await readSeat(path.join(fx.home, 'ExamEye/defaults.json')), 'A07');
+  assert.equal(await readSeat(path.join(fx.home, 'ExamEye/seat.txt')), 'A07');
+  assert.deepEqual(await readFile(path.join(fx.home, 'ExamEye/defaults.json')), await readFile(path.join(ROOT, 'installer/defaults.json')), 'defaults.json is copied unedited');
   assert.ok(await exists(path.join(fx.home, 'ExamEye/src/sw.js')));
   assert.equal(await exists(path.join(fx.home, 'ExamEye.new')), false);
 
@@ -95,7 +95,7 @@ test('macOS installer stages into ExamEye.new and swaps, never deleting first', 
   assert.equal(second.status, 0, `${second.stdout}${second.stderr}`);
   const afterSecond = JSON.parse(await readFile(destManifest, 'utf8'));
   assert.equal(afterSecond.version, '99.0.0');
-  assert.equal(await readSeat(path.join(fx.home, 'ExamEye/defaults.json')), 'B02');
+  assert.equal(await readSeat(path.join(fx.home, 'ExamEye/seat.txt')), 'B02');
   assert.equal(await exists(path.join(fx.home, 'ExamEye.new')), false);
   assert.equal(await exists(path.join(fx.home, 'ExamEye.old')), false);
   assert.equal(await readFile(updaterLog, 'utf8'), 'existing log line\n', 'update.log survives a reinstall');
@@ -109,7 +109,7 @@ test('macOS installer stages into ExamEye.new and swaps, never deleting first', 
   assert.equal(await exists(path.join(fx.home, 'ExamEye.new')), false);
   const afterThird = JSON.parse(await readFile(destManifest, 'utf8'));
   assert.equal(afterThird.version, '99.0.0', 'an exam in progress must not have its files swapped');
-  assert.equal(await readSeat(path.join(fx.home, 'ExamEye/defaults.json')), 'B02', 'seat unchanged while an exam is running');
+  assert.equal(await readSeat(path.join(fx.home, 'ExamEye/seat.txt')), 'B02', 'seat unchanged while an exam is running');
 
   await writeFile(statePath, 'CLOSING\n');
   const fourth = runInstaller(fx, script, 'D04');
@@ -118,7 +118,7 @@ test('macOS installer stages into ExamEye.new and swaps, never deleting first', 
   assert.equal(await exists(path.join(fx.home, 'ExamEye.new')), false);
   const afterFourth = JSON.parse(await readFile(destManifest, 'utf8'));
   assert.equal(afterFourth.version, '99.0.0', 'an exam in progress must not have its files swapped');
-  assert.equal(await readSeat(path.join(fx.home, 'ExamEye/defaults.json')), 'B02', 'seat unchanged while an exam is running');
+  assert.equal(await readSeat(path.join(fx.home, 'ExamEye/seat.txt')), 'B02', 'seat unchanged while an exam is running');
 
   await writeFile(statePath, 'IDLE\n');
   const mvShim = path.join(fx.shimDir, 'mv');
@@ -129,7 +129,7 @@ test('macOS installer stages into ExamEye.new and swaps, never deleting first', 
   assert.ok(fifth.stdout.includes('in use'));
   const afterFifth = JSON.parse(await readFile(destManifest, 'utf8'));
   assert.equal(afterFifth.version, '99.0.0', 'a failed swap must not lose the previous install');
-  assert.equal(await readSeat(path.join(fx.home, 'ExamEye/defaults.json')), 'B02', 'seat unchanged after a failed swap');
+  assert.equal(await readSeat(path.join(fx.home, 'ExamEye/seat.txt')), 'B02', 'seat unchanged after a failed swap');
   assert.equal(await exists(path.join(fx.home, 'ExamEye.old')), false, 'no .old left after a failed swap');
   await rm(mvShim);
 });

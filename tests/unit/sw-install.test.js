@@ -4,7 +4,13 @@ import { installFakeChrome } from './fake-chrome.js';
 
 const defaults = { startPrefix: 'https://exam.example.com/index.html', examPrefix: 'https://exam.example.com/panel/', resultPrefix: 'https://exam.example.com/results/', seat: ' C01 ', subfolder: 'ExamEye', shotIntervalMin: '5', abandonMin: 15, startButton: 'Proceed', endButton: 'Submit', endMarker: 'Subject Analysis', maxMin: 190, tailMin: 5, desktopCapture: 'on', desktopRepromptMin: 1 };
 const later = () => new Promise((r) => setTimeout(r, 30));
-const withFetch = (body) => { globalThis.fetch = async (url) => { if (!String(url).endsWith('/defaults.json')) throw new Error('unexpected ' + url); if (body === null) throw new Error('404'); return { json: async () => body }; }; };
+const withFetch = (body, seat) => { globalThis.fetch = async (url) => {
+  const u = String(url);
+  if (u.endsWith('/seat.txt')) { if (seat === undefined) throw new TypeError('Failed to fetch'); return { ok: true, text: async () => seat }; }
+  if (!u.endsWith('/defaults.json')) throw new Error('unexpected ' + url);
+  if (body === null) return { ok: true, json: async () => { throw new Error('bad json'); } };
+  return { ok: true, json: async () => body };
+}; };
 
 test('first install with defaults.json next to the manifest seeds the settings, normalised, and opens the setup page', async () => {
   const chrome = installFakeChrome();
@@ -46,7 +52,7 @@ test('a first install with saved settings already present (re-install over an ex
   assert.equal(chrome.runtime.optionsOpened, 1);
 });
 
-test('without defaults.json a first install stores nothing and still opens the setup page', async () => {
+test('unparsable defaults.json on install stores nothing, records the error, and still opens the setup page', async () => {
   const chrome = installFakeChrome();
   withFetch(null);
   const sw = await import('../../src/sw.js?install=4');
@@ -54,5 +60,27 @@ test('without defaults.json a first install stores nothing and still opens the s
   await later();
   await sw.settled();
   assert.equal((await chrome.storage.local.get('config')).config, undefined);
+  assert.equal(chrome.runtime.optionsOpened, 1);
+  assert.match((await chrome.storage.local.get('meta')).meta.lastError, /defaults\.json/);
+});
+
+test('seat.txt beside defaults.json overrides the seeded seat', async () => {
+  const chrome = installFakeChrome();
+  withFetch(defaults, ' A07 \n');
+  const sw = await import('../../src/sw.js?install=5');
+  await chrome.runtime.onInstalled.emit({ reason: 'install' });
+  await later();
+  await sw.settled();
+  assert.equal((await chrome.storage.local.get('config')).config.seat, 'A07');
+});
+
+test('reason update with no settings yet seeds from defaults.json and opens the setup page once', async () => {
+  const chrome = installFakeChrome();
+  withFetch(defaults);
+  const sw = await import('../../src/sw.js?install=6');
+  await chrome.runtime.onInstalled.emit({ reason: 'update' });
+  await later();
+  await sw.settled();
+  assert.equal((await chrome.storage.local.get('config')).config.seat, 'C01');
   assert.equal(chrome.runtime.optionsOpened, 1);
 });

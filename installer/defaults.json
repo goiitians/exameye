@@ -7,10 +7,10 @@
   "endMarker": "Subject Analysis",
   "maxMin": 190,
   "tailMin": 5,
-  "seat": "C01",
+  "seat": "",
   "subfolder": "ExamEye",
   "shotIntervalMin": 5,
-  "abandonMin": 15,
+  "abandonMin": 5,
   "desktopCapture": "on",
-  "desktopRepromptMin": 1
+  "desktopRepromptSec": 5
 }

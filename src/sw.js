@@ -336,7 +336,7 @@ async function promptDesktopNow() {
   if (!cfg || cfg.desktopCapture !== 'on' || !supported()) return;
   const { meta = {} } = await store.get('meta');
   const d = meta.desktop || EMPTY_DESKTOP;
-  if (!shouldPrompt(d, { at: now(), repromptMin: cfg.desktopRepromptMin })) return;
+  if (!shouldPrompt(d, { at: now(), repromptSec: cfg.desktopRepromptSec })) return;
   await askNow(d, cfg);
 }
 
@@ -354,7 +354,7 @@ async function askNow(d, cfg) {
 }
 
 async function applyHolder(d, msg, cfg) {
-  const r = onHolder(d, msg, { at: now(), repromptMin: cfg?.desktopRepromptMin ?? 0 });
+  const r = onHolder(d, msg, { at: now(), repromptSec: cfg?.desktopRepromptSec ?? 0 });
   await store.patchMeta({ desktop: r.desktop });
   let reask = false;
   for (const e of r.effects) {
@@ -549,22 +549,36 @@ async function ensureBoot() {
   });
 }
 
-// A centre ships its settings as defaults.json next to manifest.json (see tools/build-installer.mjs);
-// they are used once, on first install, and never replace settings that already exist.
+// A centre ships its settings as defaults.json next to manifest.json and the desk's seat as
+// seat.txt beside it (both written by the installer, see tools/build-installer.mjs); they are
+// used only when no settings exist yet and never replace saved ones. A failed seed is recorded
+// in meta.lastError so the popup shows it.
 async function seedDefaults() {
   const { config } = await store.get('config');
-  if (config) return;
+  if (config) return false;
   let raw;
-  try { raw = await (await fetch(chrome.runtime.getURL('defaults.json'))).json(); } catch { return; }
+  try {
+    const r = await fetch(chrome.runtime.getURL('defaults.json'));
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    raw = await r.json();
+  } catch (e) {
+    await store.patchMeta({ lastError: `${new Date().toISOString()} defaults.json: ${e?.message || e}` });
+    return false;
+  }
+  try {
+    const r = await fetch(chrome.runtime.getURL('seat.txt'));
+    if (r.ok) { const seat = (await r.text()).trim(); if (seat) raw = { ...raw, seat }; }
+  } catch {}
   await store.set({ config: normalize(raw) });
+  return true;
 }
 
 async function installed(d) {
   const reason = d?.reason;
-  if (reason === 'install') await seedDefaults();
+  const seeded = await seedDefaults();
   await boot();
   await enqueue(writeStateNow);
-  if (reason === 'install') await chrome.runtime.openOptionsPage();
+  if (reason === 'install' || seeded) await chrome.runtime.openOptionsPage();
 }
 
 eraseOwnCompleted();

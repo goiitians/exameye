@@ -44,8 +44,9 @@ if exist "%NEW%" rmdir /s /q "%NEW%"
 if exist "%OLD%" rmdir /s /q "%OLD%"
 robocopy "%SRC%\ExamEye" "%NEW%" /MIR /R:2 /W:2 /NFL /NDL /NJH /NJS /NP >nul
 if errorlevel 8 (call :log "failed: mirror" & goto :cleanup)
-rem defaults.json carries the seat id typed at install and is read once, on first install
-if exist "%EXT%\defaults.json" copy /Y "%EXT%\defaults.json" "%NEW%\defaults.json" >nul || (call :log "failed: defaults" & goto :cleanup)
+rem seat.txt carries the seat typed at install and is read only when no settings exist yet; the
+rem release's own defaults.json replaces the live one so a damaged copy cannot outlive an update
+if exist "%EXT%\seat.txt" copy /Y "%EXT%\seat.txt" "%NEW%\seat.txt" >nul || (call :log "failed: seat" & goto :cleanup)
 call :gate
 if defined SKIP (call :log "skipped %LATEST%: chrome running (%SKIP%)" & goto :cleanup)
 ren "%EXT%" "ExamEye.old" 2>nul || (call :log "failed: swap" & goto :cleanup)

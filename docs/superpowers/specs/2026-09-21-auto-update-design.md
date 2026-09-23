@@ -82,8 +82,9 @@ Logic, in order; every exit writes one line to `<home>/ExamEye-updater/update.lo
 5. Download the zip to a fresh temp folder, extract, and require `ExamEye/manifest.json` inside with
    `version` equal to `latest` (otherwise `failed: bad archive`).
 6. Stage: copy `ExamEye/` from the extract to `<home>/ExamEye.new` (Windows `robocopy /E`, macOS
-   `cp -R`), then copy the live `defaults.json` into it (it carries the seat id typed at install; it
-   is read once on first install and must not be replaced; a failed copy is `failed: defaults`).
+   `cp -R`), then copy the live `seat.txt` into it (the seat typed at install, read only when no settings
+   exist yet; a failed copy is `failed: seat`). The release's own `defaults.json` replaces the live
+   one, so a damaged copy cannot outlive an update.
    Re-check Chrome (`skipped` if it started meanwhile). Swap by two renames: live → `ExamEye.old`,
    `.new` → live; if the second rename fails the first is undone. A failure anywhere before the
    swap leaves the live folder untouched; a run that died between the two renames is repaired at
@@ -95,7 +96,7 @@ Logic, in order; every exit writes one line to `<home>/ExamEye-updater/update.lo
 
 Chrome loads the new files at its next start. An unpacked extension whose version changed fires
 `runtime.onInstalled` with reason `update`; the SW already handles that by calling `boot()` and
-does not reseed `defaults.json` (that happens only on `install`).
+seeds from `defaults.json`/`seat.txt` only when no settings exist, and then opens the setup page.
 
 ## 4. Installer and documents
 

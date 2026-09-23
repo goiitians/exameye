@@ -23,9 +23,9 @@ test('options form has one field per config key, an error slot per field, ok/err
   assert.match(html, /id="recording"[^>]*hidden/, 'the recording banner starts hidden');
 });
 
-test('form has desktopCapture select with on/off values and desktopRepromptMin input', () => {
+test('form has desktopCapture select with on/off values and desktopRepromptSec input', () => {
   assert.match(html, /<select[^>]*name="desktopCapture"[^>]*>[\s\S]*?<option value="on">[\s\S]*?<option value="off">[\s\S]*?<\/select>/);
-  assert.match(html, /<input[^>]*name="desktopRepromptMin"[^>]*type="number"[^>]*min="0"[^>]*max="60"/);
+  assert.match(html, /<input[^>]*name="desktopRepromptSec"[^>]*type="number"[^>]*min="0"[^>]*max="3600"/);
 });
 
 test('every field has a plain-language help line', () => {
