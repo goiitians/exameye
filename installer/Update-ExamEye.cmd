@@ -12,6 +12,7 @@ set "OLD=%EXT%.old"
 set "DIR=%USERPROFILE%\ExamEye-updater"
 set "STATE=%USERPROFILE%\Downloads\ExamEye-updater\state.txt"
 set "LOG=%DIR%\update.log"
+set "REC=%USERPROFILE%\Downloads\ExamEye"
 set "TMPD=%TEMP%\exameye-update-%RANDOM%%RANDOM%"
 if not exist "%DIR%" mkdir "%DIR%"
 rem the Startup entry and the hourly task can fire together at logon: handle 9 on the lock file is
@@ -25,6 +26,7 @@ if not exist "%EXT%" if exist "%OLD%" ren "%OLD%" "ExamEye"
 if not exist "%EXT%\manifest.json" (call :log "failed: not installed" & goto :eof)
 call :version "%EXT%\manifest.json" INSTALLED
 if not defined INSTALLED (call :log "failed: bad manifest" & goto :eof)
+call :prune
 mkdir "%TMPD%" 2>nul || (call :log "failed: mktemp" & goto :eof)
 curl -fsSL --max-time 60 -o "%TMPD%\version.txt" "%BASE%/version.txt" 2>nul || (call :log "failed: cannot read version.txt" & goto :cleanup)
 set "LATEST="
@@ -86,6 +88,20 @@ if defined V_ set "V_=%V_:,=%"
 if defined V_ set "V_=%V_: =%"
 endlocal & set "%~2=%V_%"
 goto :eof
+
+rem keeps the newest 5 session folders (named YYYYMMDD-HHMMSS_seat, so name order is time order) and
+rem deletes older ones; only real directories directly inside %REC% are candidates (dir /ad-l leaves out
+rem junctions and symlinks, and Downloads and %REC% themselves must be real folders). Runs only when the swap gate would allow a swap.
+:prune
+dir /b /ad-l "%USERPROFILE%" 2>nul | findstr /x /i "Downloads" >nul || exit /b 0
+dir /b /ad-l "%USERPROFILE%\Downloads" 2>nul | findstr /x /i "ExamEye" >nul || exit /b 0
+call :gate
+if defined SKIP exit /b 0
+for /f "skip=5 delims=" %%d in ('dir /b /ad-l /o-n "%REC%" 2^>nul ^| findstr /r /x "[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]_[A-Za-z0-9_-][A-Za-z0-9_-]*"') do (
+  rmdir /s /q "%REC%\%%d" 2>nul
+  if exist "%REC%\%%d\" (call :log "failed: prune %%d") else call :log "pruned %%d"
+)
+exit /b 0
 
 rem SKIP is empty when the swap may go ahead: no browser running, or the extension's marker says IDLE
 :gate

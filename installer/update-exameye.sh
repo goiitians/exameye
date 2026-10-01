@@ -24,6 +24,25 @@ gate() {
   printf '%s' "${state:-no state}"
   return 1
 }
+REC="$HOME/Downloads/ExamEye"
+KEEP=5
+# keeps the newest $KEEP session folders (named YYYYMMDD-HHMMSS_seat, so name order is time order) and
+# deletes older ones; only real directories directly inside $REC are candidates, never a symlink (nor
+# a symlinked Downloads or $REC), and find -xdev cannot cross into a mounted volume. Runs only when the
+# swap gate would allow a swap.
+prune() {
+  [ -d "$REC" ] && [ ! -L "$HOME/Downloads" ] && [ ! -L "$REC" ] || return 0
+  gate >/dev/null || return 0
+  local n p kept=0
+  while IFS= read -r n; do
+    p="$REC/$n"
+    [ -d "$p" ] && [ ! -L "$p" ] || continue
+    kept=$((kept + 1))
+    [ "$kept" -gt "$KEEP" ] || continue
+    find "$p" -xdev -delete 2>/dev/null
+    if [ -e "$p" ]; then log "failed: prune $n"; else log "pruned $n"; fi
+  done < <(ls -1 "$REC" | grep -E '^[0-9]{8}-[0-9]{6}_[A-Za-z0-9_-]+$' | sort -r)
+}
 newer() {
   local IFS=.
   local -a a=($1) b=($2)
@@ -39,6 +58,7 @@ newer() {
 [ -d "$EXT" ] || { [ -d "$OLD" ] && mv "$OLD" "$EXT"; }
 [ -f "$EXT/manifest.json" ] || { log 'failed: not installed'; exit 0; }
 installed=$(version_of "$EXT/manifest.json")
+prune
 body=$(curl -fsSL --max-time 30 "$BASE_URL/version.txt") || { log 'failed: cannot read version.txt'; exit 0; }
 latest=$(printf '%s' "$body" | tr -d '[:space:]')
 [ -n "$latest" ] || { log 'failed: empty version.txt'; exit 0; }
